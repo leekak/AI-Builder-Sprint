@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f4efe6" />
+  <title>다시, 그날</title>
+  <link rel="stylesheet" href="/demo/vendor/leaflet/dist/leaflet.css?v=1.9.4" />
+  <link rel="stylesheet" href="/demo/styles.css?v=20260730-map4" />
+</head>
+<body>
+  <datalist id="placeTagsList"></datalist>
+  <header class="topbar">
+    <div class="brand" aria-label="다시, 그날">
+      <span class="brand-mark" aria-hidden="true">다시</span>
+      <span class="brand-copy"><b>다시, 그날</b><small>기억을 추억으로 잇는 회상 다이어리</small></span>
+    </div>
+    <div class="topbar-actions"><label class="user-box"><span>데모 사용자 전환 <small>실제 로그인 아님</small></span><input id="userId" value="demo-user" autocomplete="off" /></label><button type="button" id="adminSessionButton" class="ghost admin-session-button">관리자 로그인</button></div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="hero">
+      <p class="eyebrow">MEMORY RETRIEVAL DIARY</p>
+      <h1>사진을 보기 전에,<br />먼저 그날을 떠올려 보세요.</h1>
+      <p>정확함을 채점하지 않아요. 떠오른 조각과 새롭게 만난 기억을 한 편의 추억으로 이어 드립니다.</p>
+      <div class="hero-stats" aria-label="나의 기록 현황">
+        <span class="hero-stat"><b id="memoryCount">—</b><small>맡긴 기억</small></span>
+        <span class="hero-stat"><b id="cardCount">—</b><small>완성한 추억</small></span>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="서비스 단계">
+      <button type="button" data-tab="register" class="active"><span class="tab-step">01</span><span class="tab-label">기억 등록</span></button>
+      <button type="button" data-tab="recall"><span class="tab-step">02</span><span class="tab-label">오늘의 회상</span><i id="dueBadge" class="badge hidden">0</i></button>
+      <button type="button" data-tab="cards"><span class="tab-step">03</span><span class="tab-label">내 추억 카드</span></button>
+      <button type="button" data-tab="town"><span class="tab-step">04</span><span class="tab-label">동네 추억 카드</span></button>
+    </nav>
+
+    <section id="register" class="panel active" aria-labelledby="registerTitle">
+      <div class="panel-heading"><div><p class="eyebrow">STEP 01 · RECORD</p><h2 id="registerTitle">오늘의 한 장면을 맡겨주세요</h2></div><div class="heading-tools"><p>원본은 회상할 때까지 조용히 보관됩니다.</p><button type="button" id="demoPreset" class="ghost">발표용 예시 채우기</button></div></div>
+      <form id="memoryForm" class="form-grid">
+        <label class="field wide"><span>짧은 코멘트 <em>필수</em></span><textarea name="comment" required maxlength="2000" placeholder="예: 비 오는 날 진우와 광안리에서 회를 먹고 바닷가를 걸었다."></textarea><small><span id="commentCount">0</span>/2,000자</small></label>
+        <label class="field"><span>기억 날짜</span><input type="date" name="memory_date" required /></label>
+        <label class="field"><span>어디에서 있었나요? <em>선택</em></span><input type="text" name="place_label" id="placeLabel" maxlength="255" placeholder="예: 광안리 해수욕장 앞 작은 카페" /><small>자유롭게 적어주세요. 저장 후 AI가 동네 카드용 표준 지역을 추천합니다.</small></label>
+        <details class="advanced wide"><summary>회상 가능일 직접 설정</summary><div class="form-grid compact"><label class="field"><span>첫 회상 가능일까지</span><div class="suffix"><input type="number" name="first_recall_days" min="0" max="30" value="7" /><b>일</b></div><small>0~30일 사이에서 설정할 수 있어요.</small></label><label class="field"><span>두 번째 회상 가능일까지</span><div class="suffix"><input type="number" name="second_recall_days" min="0" max="365" value="30" /><b>일</b></div><small>0~365일 사이에서 설정할 수 있어요.</small></label></div><small>해당 날짜가 되면 ‘오늘의 회상’에 나타납니다. 현재 버전은 별도의 푸시 알림을 보내지 않습니다.</small></details>
+        <label class="upload wide" id="uploadZone"><input class="file-input" type="file" name="image" accept="image/jpeg,image/png,image/webp" /><span class="upload-copy" id="uploadCopy"><span class="upload-icon">＋</span><b>사진 한 장을 더해보세요</b><small>JPG, PNG, WEBP · 최대 10MB · 선택 사항</small></span><img id="imagePreview" class="hidden" alt="선택한 사진 미리보기" /></label>
+        <label class="toggle wide"><input type="checkbox" name="use_ocr" /><span></span><div><b>사진 속 글자도 기억에 활용하기</b><small>티켓, 영수증, 손편지처럼 글자가 있는 사진에만 켜주세요.</small></div></label>
+        <button class="primary wide" type="submit"><span>기억을 맡기고 맥락 정리하기</span><i aria-hidden="true">→</i></button>
+      </form>
+      <div id="registerResult" class="status-box hidden" role="status"></div>
+      <section class="memory-manager" aria-labelledby="recentMemoryTitle">
+        <div class="subheading"><div><p class="eyebrow">MY RECORDS</p><h3 id="recentMemoryTitle">최근 맡긴 기억</h3></div><button type="button" id="refreshMemories" class="ghost">새로고침</button></div>
+        <p class="delete-policy">개인 기록을 삭제하면 원본 사진·코멘트·회상·개인 카드는 함께 삭제됩니다. 이미 발행된 동네 카드의 비식별 조각만 작성자 연결 없이 유지됩니다.</p>
+        <div id="recentMemories" class="memory-record-list"></div>
+      </section>
+    </section>
+
+    <section id="recall" class="panel" aria-labelledby="recallTitle">
+      <div class="panel-heading"><div><p class="eyebrow">STEP 02 · RECALL</p><h2 id="recallTitle">오늘부터 회상할 수 있는 기억</h2></div><button id="refreshDue" class="ghost">새로고침</button></div>
+      <div id="dueList" class="card-list"><div class="empty-state"><span>◌</span><h3>회상할 기억을 불러와 주세요</h3><p>원본을 보기 전, 먼저 내 안의 장면을 만나봅니다.</p></div></div>
+      <div id="recallWorkspace" class="workspace hidden">
+        <div class="progress" aria-label="회상 진행 단계"><span class="active"></span><span></span><span></span><small id="recallProgressLabel">먼저 떠올리기</small></div>
+        <div id="questionList" class="question-list"></div>
+        <label class="field"><span>떠오르는 대로 적어보세요 <small id="draftStatus" class="draft-status"></small></span><textarea id="initialAnswer" placeholder="사람, 장소, 분위기, 대화… 무엇이든 괜찮아요."></textarea></label>
+        <section id="hintPanel" class="hint-panel hidden" aria-live="polite">
+          <div><small id="hintProgress">회상 힌트</small><p id="hintText"></p></div>
+          <label class="field"><span>힌트를 보고 새롭게 떠오른 것이 있나요? <em>선택</em></span><textarea id="hintAnswer" placeholder="조금이라도 떠오른 장면이 있다면 남겨주세요."></textarea></label>
+        </section>
+        <div id="recallActionGuide" class="flow-guide" role="status" aria-live="polite"><b>먼저 지금 떠오르는 기억을 적어주세요.</b><span>답변을 저장하면 그날의 원본을 확인할 수 있어요.</span></div>
+        <div class="actions"><button type="button" id="saveAnswer" class="primary">떠오른 기억 저장하기</button><button type="button" id="requestHint" class="secondary">힌트 하나 받기</button><button type="button" id="revealOriginal" class="secondary" disabled>그날의 원본 만나기</button></div>
+        <div id="originalBox" class="original hidden"></div>
+        <label id="additionalField" class="field hidden"><span>사진을 보니 새롭게 떠오른 장면이 있나요?</span><textarea id="additionalMemory" placeholder="그날의 말, 냄새, 감정처럼 새로 떠오른 조각을 남겨주세요."></textarea></label>
+        <div id="shareChoice" class="share-choice hidden"><div><span class="pin">⌖</span><div><b>이 장소의 기억을 동네 아카이브에도 보탤까요?</b><p>원본 사진·코멘트·사용자 정보는 공유하지 않아요. 회상 조각은 이름·소속·구체적 경로와 희귀 사건을 제거한 뒤 저장합니다. 발행 전에는 취소할 수 있고, 동네 카드에 반영된 뒤에는 비식별 조각만 작성자 연결 없이 유지됩니다.</p></div></div><label class="toggle compact-toggle"><input id="shareAfterComplete" type="checkbox" /><span></span></label><input id="recallPlace" list="placeTagsList" placeholder="지역 검색" autocomplete="off" /></div>
+        <button type="button" id="completeRecall" class="primary full hidden">추억 카드 완성하기 <i>→</i></button>
+      </div>
+    </section>
+
+    <section id="cards" class="panel" aria-labelledby="cardsTitle">
+      <div class="panel-heading"><div><p class="eyebrow">STEP 03 · ARCHIVE</p><h2 id="cardsTitle">내가 다시 만난 추억</h2></div><div class="inline-controls"><select id="cardView"><option value="active">보관 중인 카드</option><option value="archived">숨겨둔 카드</option></select><select id="cardSort"><option value="latest">최근 완성순</option><option value="memory_date">기억 날짜순</option></select><button id="refreshCards" class="ghost">새로고침</button></div></div>
+      <div id="myCards" class="card-grid"><div class="empty-state"><span>◇</span><h3>완성된 카드가 아직 없어요</h3><p>첫 회상을 마치면 이곳에 추억이 차곡차곡 쌓입니다.</p></div></div>
+    </section>
+
+    <section id="town" class="panel" aria-labelledby="townTitle">
+      <div class="panel-heading"><div><p class="eyebrow">STEP 04 · TOGETHER</p><h2 id="townTitle">여럿의 기억으로 살아나는 동네</h2></div><button id="refreshTown" class="ghost">새로고침</button></div>
+      <div class="town-intro"><div><span class="pin large">⌖</span><h3>한 사람의 기억은 흐려져도,<br />여럿의 기억이 모이면 장소는 계속 살아 있어요.</h3></div><p>공유에 동의한 조각에서 개인 식별 정보와 고유 사건을 제거하고, 여러 사람에게 반복된 장소의 분위기와 활동만 공개합니다.</p></div>
+      <section class="town-map-shell" aria-labelledby="townMapTitle">
+        <div class="town-map-heading">
+          <div><p class="eyebrow">BUSAN MEMORY MAP</p><h3 id="townMapTitle">지도에서 기억이 모이는 동네를 살펴보세요</h3><p class="town-map-copy">구·군에 커서를 올리거나 핀을 눌러 그곳에 모인 기억을 살펴보세요.</p></div>
+          <div class="town-map-tools"><div id="townMapSummary" class="town-map-summary" aria-live="polite"><span>장소 정보를 불러오는 중</span></div><button type="button" id="resetTownMap" class="map-reset">부산 전체 보기</button></div>
+        </div>
+        <div id="townMap" class="town-map" aria-label="부산 동네 추억 지도"></div>
+        <div class="map-legend" aria-label="지도 범례"><span><i class="empty"></i>아직 기억 없음</span><span><i class="waiting"></i>기억이 모이는 중</span><span><i class="published"></i>동네 카드 발행</span></div>
+        <p id="townMapFallback" class="map-fallback hidden">지도를 불러오지 못했어요. 아래 장소 검색과 카드 목록은 계속 사용할 수 있습니다.</p>
+      </section>
+      <div class="town-controls"><label class="field"><span>살펴볼 장소</span><input id="townPlace" list="placeTagsList" value="" placeholder="장소를 검색하거나 지도에서 선택" autocomplete="off" /></label><div id="townStatus" class="contribution-status" aria-live="polite"></div><button id="generateTown" class="primary">동네 카드 만들기</button></div>
+      <div id="townCards" class="card-grid"><div class="empty-state"><span>⌂</span><h3>아직 완성된 동네 카드가 없어요</h3><p>같은 장소를 기억하는 사람들이 모이면 공동체의 이야기가 시작됩니다.</p></div></div>
+    </section>
+  </main>
+
+  <dialog id="privacyPreview" class="privacy-dialog">
+    <form method="dialog">
+      <p class="eyebrow">PRIVACY PREVIEW</p>
+      <h2>동네에 공유될 내용을 확인해 주세요</h2>
+      <p class="dialog-copy">개인 원문 대신 이름·소속·희귀한 사건을 제거하고 일반화한 조각만 저장합니다.</p>
+      <div class="preview-place" id="previewPlace"></div>
+      <div class="preview-fragments"><div><small>원본 공개 전 회상에서</small><p id="previewPre"></p></div><div id="previewPostWrap"><small>원본을 본 뒤 회상에서</small><p id="previewPost"></p></div></div>
+      <div class="dialog-actions"><button value="cancel" class="ghost">취소</button><button value="confirm" class="primary">이 내용으로 공유</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="adminLoginDialog" class="privacy-dialog admin-dialog">
+    <form id="adminLoginForm">
+      <p class="eyebrow">ADMIN ACCESS</p>
+      <h2>관리자 로그인</h2>
+      <p class="dialog-copy">관리자 권한은 동네 추억 카드처럼 공동체 공개 결과를 관리할 때만 사용합니다.</p>
+      <label class="field"><span>관리자 아이디</span><input id="adminUsername" autocomplete="username" required /></label>
+      <label class="field"><span>비밀번호</span><input id="adminPassword" type="password" autocomplete="current-password" required /></label>
+      <div class="dialog-actions"><button type="button" id="cancelAdminLogin" class="ghost">취소</button><button type="submit" class="primary">로그인</button></div>
+    </form>
+  </dialog>
+
+  <div id="loading" class="loading hidden" aria-live="polite"><span></span><b>기억을 천천히 정리하고 있어요</b></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/demo/js/main.js"></script>
+</body>
+</html>

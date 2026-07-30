@@ -1,27 +1,36 @@
-# 환경변수 (절대 커밋 금지 - API 키 들어있음)
+# 환경변수와 비밀값
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
-# Python (backend)
+# Python
+.venv/
 venv/
 __pycache__/
-*.pyc   
+*.py[cod]
 *.pyo
 .pytest_cache/
+.coverage
+htmlcov/
 *.egg-info/
 
-# Node.js (frontend)
+# Node.js / Next.js
 node_modules/
 .next/
 out/
 .vercel/
 
-# OS/에디터 잡파일
+# 로컬 데이터와 업로드
+data/*.db
+data/*.sqlite*
+data/uploads/*
+!data/uploads/.gitkeep
+
+# 운영체제와 에디터
 .DS_Store
 Thumbs.db
-.vscode/
 .idea/
+.vscode/
 
 # 로그
 *.log
