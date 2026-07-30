@@ -1,17 +1,37 @@
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.coverage
-htmlcov/
-.venv/
+# 환경변수와 비밀값
 .env
 .env.*
 !.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node.js / Next.js
+node_modules/
+.next/
+out/
+.vercel/
+
+# 로컬 데이터와 업로드
 data/*.db
 data/*.sqlite*
 data/uploads/*
 !data/uploads/.gitkeep
+
+# 운영체제와 에디터
 .DS_Store
-*.log
+Thumbs.db
 .idea/
 .vscode/
+
+# 로그
+*.log
+npm-debug.log*
