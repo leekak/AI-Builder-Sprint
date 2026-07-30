@@ -1,19 +1,17 @@
-# Python virtual environments
-venv/
-.venv/
-
-# Python cache
 __pycache__/
 *.py[cod]
-
-# Environment variables
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
 .env
 .env.*
 !.env.example
-
-# Node / Next.js
-node_modules/
-.next/
-
-# macOS
+data/*.db
+data/*.sqlite*
+data/uploads/*
+!data/uploads/.gitkeep
 .DS_Store
+*.log
+.idea/
+.vscode/
