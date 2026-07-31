@@ -1,521 +1,316 @@
-# 다시, 그날 — Memory Recall API
-
-서비스 목적, 전체 사용자 흐름, 개인정보·삭제 정책과 발표 시나리오는 [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md)에 처음 보는 사람도 이해할 수 있도록 정리했습니다.
-
-사진을 보기 전에 기억을 먼저 떠올리고, 원본을 확인한 뒤 새롭게 떠오른 내용을 더해 하나의 추억 카드로 완성하는 FastAPI 프로젝트입니다.
-
-이 서비스는 기억 정확도나 정답률을 평가하지 않습니다. Solar는 회상을 유도하고 회상 전후의 내용을 자연스럽게 연결하는 역할만 합니다.
-
-## 구현 범위
-
-- 사진 0~1장과 코멘트 등록
-- 이미지가 없을 때 Swagger가 `image=""`를 보내는 경우까지 처리
-- 조건부 Document Parse OCR
-- Information Extract 기반 사실 필드 구조화
-- Solar 기반 제목·요약·회상 단서 생성
-- 7일·30일 회상 일정과 데모 압축 모드
-- 원본을 숨긴 회상 세션, 개방형 질문, 답변 저장
-- 원본 공개 후 추가 회상 저장
-- 개인 추억 카드 생성·조회·보관
-- Nano Banana 기반 텍스트 추억 이미지 자동 생성(원본 사진이 없는 카드만)
-- 생성 이미지 비공개 Storage 저장, 원본 복원·재생성·삭제
-- 1·2차 회상 과정을 한 카드에서 확인하는 회상 타임라인
-- 작성 중 회상 답변의 브라우저 자동 임시저장
-- 동네 공유 전 Solar 비식별 결과 미리보기와 사용자 최종 확인
-- 프리셋 장소 태그와 opt-in 동네 공유
-- 장소별 하나의 동네 카드와 새 참여자 3명 단위 수동 갱신
-- 동일 사용자의 여러 공유 카드를 한 명·한 조각으로 묶는 공정한 집계
-- Solar 중립화와 서버 강제 치환을 함께 적용한 공개 카드 비속어 검열
-- 익명 시드 데이터
-- SQLite 로컬 모드와 Supabase Postgres/Storage 모드
-- 외부 키 없이 동작하는 mock AI 모드
-- 따뜻한 다이어리 톤의 반응형 전체 플로우 데모 UI
-- `PLACE_TAGS` 기반 장소 선택, 카드 완성 후 익명 동네 공유
-- 동네별 기여 현황과 실제 `town_cards` 조회·생성
-- Leaflet과 통계청 기반 실제 부산 16개 구·군 경계로 구성한 동네 추억 지도와 50개 지역 상태 마커
-- 기억 장소와 익명 공유 장소를 분리해 공유 취소 후에도 원래 장소 유지
-- 동일한 기여 조합의 중복 갱신 차단과 공개 카드 버전 표시
-- 기억 저장 후 AI 처리 실패 시 분석 재시도 UI
-- 답변 저장·원본 공개 상태를 복원하는 회상 이어하기
-- 같은 날짜의 여러 기록을 순서·장소·범주형 단서로 구분하되 원본 내용은 숨기는 회상 목록
-- Solar 비식별화, Information Extract 민감 후보 추출, 백엔드 누출 검사를 거치는 동네 카드 개인정보 보호 파이프라인
-- API·등록·회상·개인 카드·동네 카드별 JavaScript 모듈 구조
-- pytest 자동 테스트
-
-## 프로젝트 구조
-
-```text
-memory-recall-project/
-├── app/
-│   ├── api/                 # memories, recalls, cards, archive, health
-│   ├── services/            # Upstage/mock AI, 일정, Storage
-│   ├── static/              # 발표용 반응형 데모 UI
-│   │   ├── js/
-│   │   │   ├── api.js       # HTTP·인증 헤더·오류 정규화
-│   │   │   ├── register.js  # 기억 등록·장소 태그
-│   │   │   ├── recall.js    # 회상·원본 공개·카드 완성
-│   │   │   ├── cards.js     # 개인 카드·동네 공유
-│   │   │   ├── town.js      # 기여 현황·동네 카드
-│   │   │   ├── utils.js     # 상태·표시 공통 함수
-│   │   │   └── main.js      # 초기화·탭 오케스트레이션
-│   │   ├── index.html
-│   │   └── styles.css
-│   ├── config.py
-│   ├── database.py
-│   ├── models.py
-│   ├── schemas.py
-│   └── main.py
-├── data/uploads/            # 로컬 이미지 저장
-├── scripts/
-│   ├── seed.py              # 광안리 동네 회상 조각 4건
-│   └── smoke_test.py        # 실행 서버 전체 흐름 점검
-├── sql/supabase_schema.sql
-├── tests/
-├── .env.example
-├── requirements.txt
-├── pyproject.toml
-└── run.py
-```
-
-## 1. 빠른 실행
-
-Python 3.11 이상을 권장합니다.
-
-```bash
-python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
-python -m pip install -r requirements.txt
-cp .env.example .env           # Windows: copy .env.example .env
-python run.py
-```
-
-접속 주소:
-
-- 데모 UI: `http://127.0.0.1:8000/demo/`
-- Swagger: `http://127.0.0.1:8000/docs`
-- 상태 확인: `http://127.0.0.1:8000/health`
-
-기본 `.env.example`은 `AI_MODE=mock`, `STORAGE_BACKEND=local`, SQLite로 설정되어 있으므로 외부 키 없이 전체 플로우가 동작합니다.
-
-## 2. 자동 테스트
-
-```bash
-python -m pytest
-```
+# 다시, 그날 🌸
 
-테스트 범위:
+> 사진을 보기 전에 기억을 먼저 떠올리고, 원본을 확인한 뒤 새롭게 떠오른 내용을 더해 하나의 추억 카드로 완성하는 회상 다이어리 서비스입니다.
 
-- 이미지 없는 multipart 등록
-- Swagger 형태의 빈 이미지 문자열 처리
-- 이미지 업로드 및 소유자 확인 이미지 조회
-- 이미지 없이 OCR 선택 시 차단
-- 등록 → 분석 → 회상 → 공개 → 추가 회상 → 카드 전체 흐름
-- 사용자 간 데이터 격리
-- 동네 카드 최소 3명 조건
-- 동네 카드 입력에서 원본 코멘트 제외
-- 현재 Information Extract JSON 요청 계약과 한글 문서 렌더링
+<!-- 데모 스크린샷은 여기에 추가하세요. 예: <img width="400" alt="Image" src="https://github.com/user-attachments/assets/..." /> -->
 
-## 3. 이미지 0~1장 처리
+# 1️⃣ 프로젝트 개요
 
-`POST /memories`는 `multipart/form-data`를 사용합니다. 이미지가 없으면 프런트엔드에서 `image` 필드를 아예 추가하지 않는 것이 가장 좋습니다.
+**프로젝트 주제**
 
-```javascript
-const formData = new FormData();
-formData.append("comment", comment);
-formData.append("memory_date", memoryDate);
-formData.append("use_ocr", "false");
-formData.append("place_label", "광안리 해수욕장 앞 작은 카페"); // 선택 사항, 자유 입력
+이 웹 애플리케이션은 **사진과 코멘트를 바로 다시 보여주지 않는 회상 다이어리**입니다. 기억을 등록하면 일정 시간(7일, 30일)이 지난 뒤 원본을 숨긴 채 먼저 기억을 떠올리게 하고, 원본을 공개한 다음 새롭게 떠오른 내용을 더해 하나의 추억 카드로 완성합니다.
 
-if (selectedImage instanceof File) {
-  formData.append("image", selectedImage);
-}
-```
+**프로젝트 목표**
 
-Swagger UI가 파일 미선택 상태에서 아래처럼 빈 문자열을 보내더라도 백엔드가 `None`으로 정규화합니다.
+이 서비스는 **저장은 기억을 지켜주지 않는다, 기억은 다시 떠올리는 과정(인출)에서 강화된다**는 인지심리학적 원리를 개인의 기억뿐 아니라 사라져가는 장소의 기억에도 적용하는 것을 목표로 합니다. AI는 사용자를 채점하는 역할이 아니라 회상을 유도하는 질문을 만들고, 회상 전후의 내용을 자연스럽게 하나의 이야기로 연결하는 역할만 합니다.
 
-```bash
--F 'image='
-```
-
-실제 파일이 없는데 `use_ocr=true`이면 400 오류를 반환합니다.
+**차별성 및 장점**
 
-## 4. 핵심 API 흐름
+1. **회상 우선 흐름:** 기존의 사진 다이어리와 달리, 원본을 즉시 보여주지 않고 **개방형 질문 → 자유 회상 → 원본 공개** 순서를 강제합니다. 정답을 맞히는 문제가 아니라 넓은 질문에서 시작해 단계적으로 구체적인 단서를 열람하는 방식으로, 사용자가 "틀렸다"는 느낌을 받지 않도록 설계했습니다.
+2. **1·2차 회상과 카드 누적:** 하나의 기억은 7일 뒤와 30일 뒤 두 번 회상되며, 두 번째 회상에서 새롭게 떠오른 내용은 새 카드가 아니라 **기존 카드에 이어 붙습니다.** 회상 횟수가 아니라 원본 기억을 기준으로 카드를 관리합니다.
+3. **동네 추억 카드:** 개인 회상 메커니즘(회상 → 원본 공개 → 새 기억 추가 → AI가 하나의 이야기로 연결)을 지역 단위로 그대로 확장했습니다. 같은 장소를 회상한 서로 다른 사용자 3명의 익명 조각이 모이면 공동체 추억 카드가 만들어져, 사라져가는 동네의 기억도 함께 보존합니다.
+4. **강력한 개인정보 보호 파이프라인:** 동네 공유 전 Solar가 이름·소속·경로 등을 비식별화하고, Information Extract로 민감 후보를 한 번 더 검출한 뒤, 백엔드가 최종 결과에 남은 차단 표현을 강제로 검사합니다. 사용자는 실제로 저장될 문장을 미리 확인하고 동의해야만 공유가 진행됩니다.
 
-### 화면에서의 전체 사용 흐름
+**사용 언어 및 라이브러리** : Python, FastAPI, SQLAlchemy, SQLite/Supabase(Postgres), Supabase Storage, Upstage(Solar LLM·Document Parse·Information Extract), Google Gemini(Nano Banana), Leaflet.js
 
-```text
-1. 기억 등록
-   사진(선택) + 코멘트 + 날짜 + 장소 태그를 저장
-   → 조건부 OCR → 사실 정보 추출 → 제목·요약·회상 단서 생성
+---
 
-2. 오늘의 회상
-   원본을 숨긴 질문 확인 → 먼저 떠오른 답변 작성 → 답변 저장
-   → 저장이 끝난 뒤에만 원본 공개 버튼 활성화
-   → 작성 중인 내용은 현재 사용자·회상 세션별로 브라우저에 자동 임시저장
+# 2️⃣ 사용자(Role)
 
-3. 원본 공개와 카드 완성
-   원본 사진·코멘트 확인 → 새롭게 떠오른 기억 추가
-   → 1차 회상은 추억 카드를 생성하고, 2차 회상은 같은 카드에 내용을 누적·갱신
-   → 원하는 경우 장소를 확인하고 익명 동네 공유
+- **일반 사용자 (User)**:
+  - 사진(0~1장)과 코멘트로 기억을 등록하고, 회상 시점이 되면 질문에 답하며 회상합니다.
+  - 원본 공개 후 새롭게 떠오른 기억을 추가해 추억 카드를 완성하고, 카드를 보관·숨김 처리할 수 있습니다.
+  - opt-in으로 동의한 경우에만 비식별화된 회상 조각을 동네 추억 카드 재료로 공유합니다.
+  - 다른 사용자의 기억·카드에는 접근할 수 없습니다(`owner_id` 기준으로 완전히 격리).
+- **관리자 (Admin)**:
+  - 별도 로그인(아이디/비밀번호 + JWT)을 통해서만 접근할 수 있습니다.
+  - 일반 사용자는 볼 수 없는 **동네 추억 카드 삭제** 권한을 가집니다.
+  - 삭제해도 사용자가 공유한 비식별 조각 자체는 유지되어, 나중에 다시 동네 카드를 생성할 수 있습니다.
 
-4. 내 추억 카드
-   완성한 카드와 1·2차 회상 타임라인을 조회
-   → 원본 사진이 있으면 별도 변환 없이 그대로 표시
-   → 사진이 없으면 한 번의 버튼으로 카드 내용에 어울리는 추억 이미지 생성
-   → 이미지 표현 방식은 서비스가 기억의 맥락에 맞춰 자동 선택
-   → 카드를 숨기거나 다시 복구할 수 있으며, 영구 삭제와 구분
-   → 동네 공유 장소 변경 또는 공유 취소 가능
-   → 공유 전 실제로 저장될 비식별 문장을 확인하고 동의
+---
 
-5. 동네 추억 카드
-   실제 기여 인원과 최소 인원 충족 상태 조회
-   → 조건 충족 시 여러 사람의 회상 조각으로 공동체 카드 생성
-```
+# 3️⃣ 기능
 
-Step 2는 기억을 채점하는 단계가 아닙니다. 첫 화면에는 넓은 개방형 질문 하나만 표시하고, 잘 떠오르지 않으면 원본을 공개하지 않은 채 감각·분위기 중심의 약한 힌트부터 활동·장소 범주의 단서까지 순차적으로 열 수 있습니다. 힌트를 보고 떠오른 내용은 단계별로 보존되며, 마지막 힌트 뒤에도 기억나지 않는 경우에만 회상 시도를 저장하고 원본 확인으로 이동합니다. 답변을 저장하기 전에는 원본 공개 버튼이 비활성화됩니다.
+## 1. 기억 등록
 
-추억 카드는 회상 횟수가 아니라 원본 기억을 기준으로 관리합니다. 하나의 기억을 7일 뒤와 30일 뒤에 두 번 회상해도 카드는 한 장만 유지되며, 두 번째 회상에서 새롭게 떠오른 내용은 기존 카드에 이어집니다.
+- **사용자**: 일반 사용자
+- **기능**: 사진 0~1장, 코멘트, 기억 날짜, 자유 입력 장소(`place_label`)를 `multipart/form-data`로 등록합니다. 등록과 동시에 1차(7일 뒤)·2차(30일 뒤) 회상 시각을 계산해 저장합니다.
+- **주요 SQL**:
 
-회상 일정은 알림 발송 시간이 아니라 해당 기억이 `오늘의 회상` 목록에 활성화되는 시점입니다. 현재 MVP에는 푸시·이메일 알림이 포함되지 않습니다.
+    ```sql
+    INSERT INTO memories (
+      id, owner_id, comment, memory_date, place_label,
+      image_path, image_filename, image_content_type, use_ocr,
+      first_recall_at, second_recall_at, current_recall_stage, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'registered');
+    ```
 
-장소 입력은 개인 기록에 구체적인 원문을 유지합니다. 동네 공유용 표준 태그는 주요 생활권과 별칭(예: 자갈치시장 → 남포동, 전포카페거리 → 서면)을 이용해 추천하고, 사용자가 최종 확정합니다.
+### 1-1. 사진 속 텍스트 인식 (조건부 OCR)
 
-동네 공유 미리보기에는 10분 동안 유효한 서버 서명을 붙입니다. 사용자가 확인한 문장과 최종 저장 문장이 달라지거나 브라우저에서 내용이 변조되는 것을 막으려면 배포 환경의 `.env`에 충분히 긴 임의 문자열을 설정하세요.
+- **대상 사용자**: 일반 사용자
+- **기능 설명**: 영화표·영수증처럼 사진 속에 텍스트가 있을 때만 사용자가 직접 `use_ocr`을 선택합니다. 이미지가 없는데 OCR을 요청하면 400 오류로 차단합니다. Document Parse 결과는 이후 Information Extract·Solar 분석에 함께 사용됩니다.
+- **주요 SQL**:
 
-```env
-SHARE_PREVIEW_SECRET=replace-with-a-long-random-secret
-```
+    ```sql
+    UPDATE memories
+    SET ocr_status = 'completed', ocr_text = ?
+    WHERE id = ? AND owner_id = ?;
+    ```
 
-### 기억 등록 및 분석
+## 2. 기억 맥락 분석
 
-```text
-POST /memories
-POST /memories/{memory_id}/parse       # use_ocr=true일 때
-POST /memories/{memory_id}/extract
-POST /memories/{memory_id}/analyze
-PATCH /memories/{memory_id}/place-tag   # AI 추천 표준 지역 확인·변경
-DELETE /memories/{memory_id}           # 개인 기억과 연결 자료 삭제
-```
+- **사용자**: 일반 사용자 (등록 직후 자동 실행)
+- **기능 설명**: Information Extract가 코멘트(+OCR 결과)에서 사람·장소·활동·분위기를 사실 기반으로 구조화하고, Solar가 그 결과를 바탕으로 제목·요약·회상 단서(`recall_cues`)를 생성합니다. 원문에 없는 사건·감정은 만들어내지 않습니다.
+- **주요 SQL**:
 
-데모나 프런트엔드에서는 아래 편의 API로 세 단계를 연속 실행할 수 있습니다.
+    ```sql
+    UPDATE memories
+    SET extraction_status = 'completed', extracted_context = ?::jsonb
+    WHERE id = ?;
 
-```text
-POST /memories/{memory_id}/process
-```
+    UPDATE memories
+    SET analysis_status = 'completed', analysis = ?::jsonb
+    WHERE id = ?;
+    ```
 
-### 회상
+## 3. 오늘의 회상
 
-```text
-GET  /recalls/due
-POST /recalls
-POST /recalls/{recall_id}/questions
-POST /recalls/{recall_id}/answers
-POST /recalls/{recall_id}/reveal
-POST /recalls/{recall_id}/additional-memory
-POST /recalls/{recall_id}/complete
-```
+- **사용자**: 일반 사용자
+- **기능 설명**: 회상 시각이 지난 기억만 조회합니다. 원본 코멘트·이미지는 응답에 포함하지 않고, 같은 날짜에 여러 기억이 있으면 순서(`day_sequence`)와 범주형 단서로만 구분합니다.
+- **주요 SQL**:
 
-`GET /recalls/due` 응답에는 원본 코멘트와 이미지 URL이 포함되지 않습니다.
-같은 날짜에 여러 기억이 있으면 `day_sequence`, `same_day_count`로 순서를 구분하고, 확정된 `place_tag`와 `cue_categories`만 제공합니다. 범주형 단서는 사람·장소·활동·분위기·감정 수준으로 제한해 회상 전에 정답이 노출되지 않도록 합니다.
+    ```sql
+    SELECT id, place_tag, current_recall_stage
+    FROM memories
+    WHERE owner_id = ?
+      AND recall_completed = false
+      AND (
+        (current_recall_stage = 1 AND first_recall_at <= now())
+        OR (current_recall_stage = 2 AND second_recall_at <= now())
+      );
 
-### 카드
-
-```text
-GET  /cards
-GET  /cards/{card_id}
-POST /cards/{card_id}/archive
-POST /cards/{card_id}/share-to-town
-POST /cards/{card_id}/share-preview
-```
-
-카드가 완성된 뒤에만 익명 공유 동의를 받습니다. 요청과 저장 필드의 대응은 다음과 같습니다.
-
-```text
-요청: consent + place_tag
-카드: shared_to_town + place_tag
-기억: share_to_town + place_tag
-기여: town_contributions 행 생성/삭제
-```
+    INSERT INTO recall_sessions (id, memory_id, owner_id, stage, status)
+    VALUES (?, ?, ?, ?, 'created');
+    ```
 
-장소 정보는 두 필드로 분리합니다.
+### 3-1. 회상 질문과 단계별 힌트
 
-```text
-place_label          사용자가 자유롭게 입력한 구체적인 장소. 개인 기록에 그대로 보존
-suggested_place_tag  Information Extract 결과와 입력 장소에서 찾은 표준 지역 추천값
-place_tag            사용자가 확인한 동네 카드 그룹용 표준 태그
-```
+- **대상 사용자**: 회상을 시작한 사용자
+- **기능 설명**: 넓은 개방형 질문 하나만 먼저 보여주고, `조금 더 떠올려보기`를 선택하면 감각·분위기 → 활동·장소 순으로 점점 구체적인 힌트를 엽니다. `기억이 잘 나지 않아요`를 선택해도 실패로 기록하지 않습니다.
+- **주요 SQL**:
 
-기억 등록 후 AI가 표준 지역을 추천하지만 자동 확정하지 않습니다. 사용자가 `PATCH /memories/{memory_id}/place-tag` 또는 화면의 `지역 태그 확정`을 실행해야 `place_tag`가 저장됩니다. `place_tag` 확정도 동네 공개 동의로 간주하지 않으며 기본값은 항상 비공유입니다.
+    ```sql
+    UPDATE recall_sessions
+    SET initial_answer = ?, hint_answers = ?::jsonb, hint_level = ?, answered_at = now()
+    WHERE id = ? AND owner_id = ?;
+    ```
 
-### 삭제 정책
+### 3-2. 원본 공개와 추가 회상
 
-`DELETE /memories/{memory_id}`는 다음 원칙을 적용합니다.
+- **대상 사용자**: 답변을 저장한 사용자
+- **기능 설명**: 답변 저장 전에는 원본 공개 버튼이 비활성화됩니다. 공개 후에는 원본 사진·코멘트·날짜를 보여주고, 새롭게 떠오른 장면·감정·대화를 추가로 작성할 수 있습니다.
+- **주요 SQL**:
 
-- 원본 사진·코멘트·OCR/분석 결과·회상 세션·개인 추억 카드·사용자 연결은 삭제합니다.
-- 아직 동네 카드에 사용되지 않은 공유 조각은 함께 완전히 삭제합니다.
-- 이미 발행된 동네 카드에 사용된 조각은 기존 동네 카드를 깨뜨리지 않도록 유지하되, Solar로 다시 비식별화한 뒤 `town_archived_fragments`로 옮깁니다.
-- `town_archived_fragments`에는 `owner_id`, `memory_id`, `card_id`, `recall_id`가 없어 작성자에게 다시 연결할 수 없습니다.
-- 공유 시점부터 `town_contributions`에는 원문이 아니라 비식별화·일반화된 문장만 저장합니다.
+    ```sql
+    UPDATE recall_sessions
+    SET revealed_at = now()
+    WHERE id = ? AND owner_id = ?;
 
-기존 Supabase 프로젝트에는 아래 마이그레이션을 SQL Editor에서 한 번 실행해야 합니다.
+    UPDATE recall_sessions
+    SET newly_recalled_text = ?, completed_at = now()
+    WHERE id = ? AND owner_id = ?;
+    ```
 
-```text
-sql/migrations/002_town_archived_fragments.sql
-sql/migrations/003_memory_place_labels.sql
-sql/migrations/004_living_town_cards.sql
-sql/migrations/005_memory_card_generated_images.sql
-```
+## 4. 추억 카드 완성
 
-### Nano Banana 추억 카드 이미지
+- **사용자**: 일반 사용자
+- **기능 설명**: 회상 전 답변과 공개 후 추가 기억을 Solar가 하나의 이야기로 연결합니다. `(memory_id, stage)`에 유니크 제약을 걸어 1차 회상은 카드를 새로 만들고, 2차 회상은 같은 기억의 카드를 갱신하도록 구분합니다.
+- **주요 SQL**:
 
-실제 Gemini API를 사용할 때 `.env`를 다음처럼 설정합니다.
+    ```sql
+    -- (memory_id, stage) UNIQUE 제약으로 재회상 시 카드 중복 생성을 방지
+    INSERT INTO memory_cards (id, memory_id, recall_id, owner_id, card_title, story, reflection, newly_recalled_details)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb);
+    ```
 
-```env
-CARD_IMAGE_GENERATION_ENABLED=true
-CARD_IMAGE_MODE=gemini
-GEMINI_API_KEY=Google_AI_Studio에서_발급한_키
-NANO_BANANA_MODEL=gemini-3.1-flash-image
-NANO_BANANA_TIMEOUT_SECONDS=120
-```
+### 4-1. 추억 카드 보관함
 
-외부 호출 없이 UI와 Storage 흐름만 시험하려면 `CARD_IMAGE_MODE=mock`을 사용합니다. `auto`는 Gemini 호출 실패 시 mock 이미지로 대체하므로 실제 연동 검증에는 사용하지 않는 것이 좋습니다.
+- **대상 사용자**: 카드 소유자
+- **기능 설명**: 완성한 카드를 최신순으로 조회하고, 상세 화면에서 원본 사진과 1·2차 회상 타임라인을 함께 확인합니다. 카드는 숨김 처리와 복구가 가능하며, 영구 삭제와는 구분됩니다.
+- **주요 SQL**:
 
-```text
-POST   /cards/{card_id}/generate-image
-GET    /cards/{card_id}/generated-image
-DELETE /cards/{card_id}/generated-image
-```
+    ```sql
+    SELECT * FROM memory_cards
+    WHERE owner_id = ? AND archived = false
+    ORDER BY created_at DESC;
 
-사진이 있는 카드는 원본 사진을 그대로 사용하며 이미지 생성 버튼을 표시하지 않습니다. 따라서 원본 사진은 이미지 생성을 위해 Google API로 전송되지 않습니다. 사진이 없는 카드에서만 카드 내용을 바탕으로 이미지를 생성하며, 사용자가 화풍을 고르지 않아도 기억의 맥락에 맞는 표현 방식을 서비스가 자동 선택합니다. 생성 결과에는 화면에서 `AI로 만든 추억 이미지` 라벨을 표시합니다.
+    UPDATE memory_cards SET archived = true WHERE id = ? AND owner_id = ?;
+    ```
 
-화면의 `최근 맡긴 기억` 또는 개인 추억 카드에서 삭제할 수 있으며, 되돌릴 수 없는 범위와 익명 조각 보존 여부를 확인한 뒤 실행합니다.
+### 4-2. 사진 없는 카드의 AI 이미지 생성
 
-### 동네 아카이브
+- **대상 사용자**: 원본 사진이 없는 카드의 소유자
+- **기능 설명**: 사진이 있는 카드는 원본을 그대로 쓰고 이미지 생성 버튼 자체를 숨깁니다. 사진이 없을 때만 카드 내용을 바탕으로 Gemini(Nano Banana)가 이미지를 생성하며, 원본 사진은 절대 Google API로 전송되지 않습니다.
+- **주요 SQL**:
 
-```text
-GET  /place-tags
-GET  /archive/places
-GET  /archive/places/statuses
-GET  /archive/places/{place_tag}/status
-POST /archive/places/{place_tag}/card
-DELETE /archive/places/cards/{card_id}   # 관리자 계정 전용
-POST /admin/login
-GET  /admin/me
-```
+    ```sql
+    UPDATE memory_cards
+    SET generated_image_path = ?, image_generation_status = 'completed', image_generated_at = now()
+    WHERE id = ? AND owner_id = ?;
+    ```
 
-동네 카드에는 아래 정보만 전달됩니다.
+## 5. 동네 추억 카드
 
-- 원본 공개 전 회상 답변
-- 원본 공개 후 새롭게 떠오른 기억
+### 5-1. 공유 미리보기와 비식별화
 
-동네 카드를 생성할 때는 원본 회상 조각을 곧바로 이야기 생성에 사용하지 않습니다.
+- **대상 사용자**: 카드를 완성한 사용자 (opt-in)
+- **기능 설명**: 공유 버튼을 눌러도 바로 저장하지 않습니다. Solar가 이름·소속·경로 등을 제거한 미리보기 문장을 10분 유효한 서버 서명과 함께 보여주고, 사용자가 최종 확인해야 실제로 저장됩니다.
+- **주요 SQL**:
 
-```text
-공유 동의된 회상 조각
-→ 공유 시점에 Solar로 개인 식별 정보·희귀 사건을 제거해 DB 저장
-→ Information Extract로 이름·다른 정밀 장소 후보 추출
-→ Solar로 이름·소속·경로·희귀 사건 제거 및 공통 주제 일반화
-→ 비식별화된 공통 주제로만 동네 카드 생성
-→ 백엔드가 차단 표현의 최종 결과 잔존 여부 검사
-→ 통과한 카드만 저장·공개
-```
+    ```sql
+    INSERT INTO town_contributions (id, card_id, memory_id, recall_id, owner_id, contributor_key, place_tag, pre_reveal_text, post_reveal_text)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+    ```
 
-장소마다 공개 카드는 한 장만 유지합니다. 최초에는 서로 다른 사용자 3명이 필요하고,
-발행 뒤에는 이전 발행에 포함되지 않은 새 사용자 3명이 모였을 때 같은 카드의 내용과
-버전을 갱신합니다. 한 사용자가 같은 장소에 여러 개인 카드를 공유해도 기여자 수는 1명이며,
-여러 조각은 하나로 합쳐져 다른 참여자와 같은 가중치로 처리됩니다.
+### 5-2. 동네 카드 생성 (최소 3명)
 
-개인 기억을 삭제해도 이미 발행된 동네 카드는 바뀌지 않습니다. 발행에 사용된 조각은
-사용자·기억·개인 카드 연결을 제거한 익명 보존 조각으로 전환됩니다. 공개 전 단계와 최종
-카드 저장 직전에 비속어를 중립 표현으로 치환하므로 입력의 욕설이 공개 카드에 그대로
-노출되지 않습니다.
+- **대상 사용자**: 수동 트리거(발표자/관리자 화면의 버튼)
+- **기능 설명**: 같은 장소 태그에 서로 다른 사용자 3명의 조각이 모이면 카드를 생성합니다. 기여자 수는 레코드 수가 아니라 서로 다른 사용자 수로 판정하며, 같은 사용자의 여러 조각은 하나로 묶어 한 명으로 집계합니다.
+- **주요 SQL**:
 
-최종 결과에 차단 표현이 남으면 카드 생성은 실패 처리되며 DB에 저장되지 않습니다.
-개인정보 보호 파이프라인 도입 전에 생성된 레거시 동네 카드는 공개 목록에서 숨기며, 같은 장소의 카드 생성 버튼을 다시 실행하면 최신 파이프라인으로 안전하게 재처리됩니다.
+    ```sql
+    SELECT COUNT(DISTINCT COALESCE(contributor_key, owner_id)) AS contributors
+    FROM town_contributions
+    WHERE place_tag = ?;
 
-원본 사진, 원본 코멘트 전체, 사용자 식별 정보는 Solar 입력에 포함하지 않습니다.
+    INSERT INTO town_cards (id, place_tag, contributors, card_title, story, reflection, source_contribution_ids, published_contributor_keys, version)
+    VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 1);
+    ```
 
-## 5. 회상 데모 모드
+### 5-3. 동네 기억 지도
 
-```env
-DEMO_MODE=true
-DEMO_DAY_SECONDS=2
-FIRST_RECALL_DAYS=7
-SECOND_RECALL_DAYS=30
-```
+- **사용자**: 모든 사용자
+- **기능 설명**: Leaflet과 실제 부산 16개 구·군 경계 데이터를 이용해 장소별 기여 현황을 지도에서 확인할 수 있습니다.
+- **주요 SQL**:
 
-이 설정에서는 1일을 2초로 환산하므로 첫 회상은 등록 14초 뒤, 두 번째 회상은 60초 뒤에 도래합니다.
+    ```sql
+    SELECT place_tag, COUNT(DISTINCT COALESCE(contributor_key, owner_id)) AS contributors
+    FROM town_contributions
+    GROUP BY place_tag;
+    ```
 
-발표 중 즉시 테스트하려면 등록 폼에서 `first_recall_days=0`을 사용할 수 있습니다.
+## 6. 관리자 인증과 동네 카드 삭제
 
-운영 설정:
+- **사용자**: 관리자
+- **기능 설명**: 관리자 아이디/비밀번호로 로그인하면 JWT를 발급하고, 이 토큰이 있어야만 동네 카드를 삭제할 수 있습니다. 일반 사용자에게는 삭제 버튼 자체가 보이지 않습니다.
+- **주요 SQL**:
 
-```env
-DEMO_MODE=false
-FIRST_RECALL_DAYS=7
-SECOND_RECALL_DAYS=30
-```
+    ```sql
+    DELETE FROM town_cards WHERE id = ?;  -- require_admin_account 의존성 통과 후에만 실행
+    ```
 
-## 6. Upstage 연동
+## 7. 개인 기억 삭제 정책
 
-`.env`를 다음처럼 설정합니다.
+- **대상 사용자**: 기억 소유자
+- **기능 설명**: 원본 사진·코멘트·회상 세션·개인 카드는 완전히 삭제합니다. 다만 이미 발행된 동네 카드에 쓰인 조각은 카드를 깨뜨리지 않도록 익명 보존 테이블로 옮깁니다.
+- **주요 SQL**:
 
-```env
-AI_MODE=upstage
-UPSTAGE_API_KEY=발급받은_API_KEY
-UPSTAGE_SOLAR_MODEL=solar-pro3
-```
+    ```sql
+    -- 이미 발행된 동네 카드에 쓰인 조각은 사용자 연결을 제거하고 보존
+    INSERT INTO town_archived_fragments (id, place_tag, contributor_key, pre_reveal_text, post_reveal_text)
+    SELECT ?, place_tag, contributor_key, pre_reveal_text, post_reveal_text
+    FROM town_contributions WHERE memory_id = ?;
 
-모드 차이:
+    DELETE FROM memories WHERE id = ? AND owner_id = ?;  -- CASCADE로 회상 세션·개인 카드도 함께 삭제
+    ```
 
-- `mock`: 외부 호출 없음
-- `auto`: API 키가 있으면 Upstage를 사용하고, 설정에 따라 실패 시 mock으로 전환
-- `upstage`: Upstage 오류를 숨기지 않고 502로 반환
+---
 
-기본 호출 위치:
+# 4️⃣ 데이터베이스 스키마
 
-- Solar: `${UPSTAGE_BASE_URL}/chat/completions`
-- Document Parse: `UPSTAGE_DOCUMENT_PARSE_URL`
-- Information Extract: `UPSTAGE_INFORMATION_EXTRACT_URL`
+**PK : 진하게**, <u>FK : 밑줄</u>
 
-Upstage URL과 모델명은 환경변수로 분리했습니다. 기본 구현은 현재 API 계약에 맞춰 다음 형식을 사용합니다.
+| 테이블명 | 컬럼명 |
+| --- | --- |
+| memories | **id** varchar(36), owner_id varchar(128), comment text, memory_date date, place_label varchar(255), image_path/filename/content_type, use_ocr boolean, ocr_status/ocr_text/ocr_error, extraction_status/extracted_context(jsonb)/extraction_error, analysis_status/analysis(jsonb)/analysis_error, first_recall_at/second_recall_at timestamptz, current_recall_stage int, recall_completed boolean, place_tag, suggested_place_tag, share_to_town boolean, status, created_at/updated_at |
+| recall_sessions | **id** varchar(36), <u>memory_id</u> → memories, owner_id, stage int, status, questions(jsonb), initial_answer, hint_answers(jsonb), hint_level int, memory_not_recalled boolean, newly_recalled_text, started_at/answered_at/revealed_at/completed_at *(UNIQUE: memory_id+stage)* |
+| memory_cards | **id**, <u>memory_id</u> → memories, <u>recall_id</u> → recall_sessions(UNIQUE), owner_id, card_title, story, reflection, newly_recalled_details(jsonb), archived boolean, shared_to_town boolean, place_tag, generated_image_path/filename/content_type, image_generation_status/mode/style/prompt, image_generated_at, created_at/updated_at |
+| town_contributions | **id**, <u>card_id</u> → memory_cards(UNIQUE), <u>memory_id</u> → memories, <u>recall_id</u> → recall_sessions, owner_id, contributor_key, place_tag, pre_reveal_text, post_reveal_text, created_at |
+| town_archived_fragments | **id**, place_tag, contributor_key, pre_reveal_text, post_reveal_text, created_at *(owner_id/memory_id/card_id/recall_id 없음 — 작성자 재연결 불가)* |
+| town_cards | **id**, place_tag, contributors int, card_title, story, reflection, source_contribution_ids(jsonb), published_contributor_keys(jsonb), version int, created_at/updated_at |
 
-- Document Parse: 이미지 파일을 `multipart/form-data`의 `document`로 전달
-- Information Extract: `messages[].content[].image_url`과 `response_format.json_schema`를 포함한 JSON 요청
-- Solar: OpenAI 호환 Chat Completions JSON 요청
+전체 DDL은 [`sql/supabase_schema.sql`](sql/supabase_schema.sql), 스키마 변경 이력은 [`sql/migrations/`](sql/migrations)에 있습니다.
 
-Information Extract는 문서·이미지를 입력으로 받기 때문에, 서비스가 분석해야 할 **코멘트 + 선택적 OCR 결과**를 서버에서 한글 PNG 문서로 렌더링한 뒤 data URL로 전달합니다. 따라서 원본 사진이 없는 기억도 같은 구조화 단계를 거칠 수 있습니다. 자동 탐색되는 한글 시스템 글꼴이 없는 환경에서는 다음 값을 지정하세요.
+---
 
-```env
-UPSTAGE_TEXT_RENDER_FONT_PATH=/absolute/path/to/korean-font.ttf
-```
+# 5️⃣ 팀원의 역할 배분
 
-Information Extract에는 아래 JSON Schema를 요구합니다.
+> 아래 이름·역할은 초안입니다. 실제 담당과 다르면 알려주세요 — 정확한 내용으로 채워드릴게요.
 
-```json
-{
-  "people": [],
-  "places": [],
-  "activities": [],
-  "atmosphere": [],
-  "emotions": []
-}
-```
+- 김진우
+  - (담당 기능을 알려주세요)
+- 이태경
+  - (담당 기능을 알려주세요)
+- HAKJIN LEE
+  - (담당 기능을 알려주세요)
 
-Solar 프롬프트에는 다음 제한을 명시했습니다.
+---
 
-- 기억을 채점하지 않음
-- 원문에 없는 사건·인물·감정을 생성하지 않음
-- 동네 카드에서 반복되지 않은 감정을 공동체의 공통 감정으로 일반화하지 않음
+# 6️⃣ 프로젝트 실행 방법
 
-## 7. Supabase 연결
+1. Python 3.11 이상 가상환경을 만들고 의존성을 설치합니다.
 
-### Database
+    ```bash
+    python -m venv venv
+    source venv/bin/activate      # Windows: venv\Scripts\activate
+    python -m pip install -r requirements.txt
+    ```
 
-Supabase 대시보드의 Postgres 또는 Pooler 접속 문자열을 SQLAlchemy 형식으로 넣습니다.
+2. `.env.example`을 `.env`로 복사합니다. 기본값(`AI_MODE=mock`, `STORAGE_BACKEND=local`, SQLite)만으로도 외부 키 없이 전체 플로우가 동작합니다.
 
-```env
-DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:6543/postgres
-```
+    ```bash
+    cp .env.example .env
+    ```
 
-두 가지 방법 중 하나를 사용합니다.
+3. 서버를 실행합니다.
 
-1. `AUTO_CREATE_TABLES=true`로 FastAPI 시작 시 테이블 생성
-2. Supabase SQL Editor에서 `sql/supabase_schema.sql` 실행
+    ```bash
+    python run.py
+    ```
 
-### Storage
+4. 아래 주소로 접속합니다.
 
-```env
-STORAGE_BACKEND=supabase
-SUPABASE_URL=https://PROJECT.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=서비스_역할_키
-SUPABASE_STORAGE_BUCKET=memory-images
-```
+    - 데모 UI: [http://127.0.0.1:8000/demo/](http://127.0.0.1:8000/demo/)
+    - Swagger: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+    - 상태 확인: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
 
-`sql/supabase_schema.sql`은 private `memory-images` bucket 생성문도 포함합니다.
+5. (선택) 동네 카드 데모용 시드 데이터를 넣고, 동네 카드를 생성해봅니다.
 
-서비스 역할 키는 서버 전용입니다. 브라우저 코드나 공개 저장소에 넣으면 안 됩니다.
+    ```bash
+    python scripts/seed.py
+    ```
 
-원본 사진은 public URL로 노출하지 않습니다. FastAPI가 `/memories/{memory_id}/image` 요청에서 소유자를 확인한 뒤 파일을 프록시합니다.
+    ```text
+    POST /archive/places/광안리/card
+    ```
 
-## 8. 인증 모드
+6. (선택) 자동 테스트와 서버 스모크 테스트를 실행합니다.
 
-```env
-AUTH_MODE=demo
-```
+    ```bash
+    python -m pytest
+    python scripts/smoke_test.py   # 서버가 실행 중이어야 합니다
+    ```
 
-- `demo`: `X-User-Id`가 없으면 `DEMO_USER_ID` 사용
-- `header`: 모든 개인 API에 `X-User-Id` 필수
-- `supabase`: Bearer JWT의 `sub`를 사용자 ID로 사용
+Supabase(Postgres+Storage), Upstage(Solar·Document Parse·Information Extract), Gemini(카드 이미지 생성), 관리자 계정, 회상 데모 압축 모드 등 실제 서비스 연동에 필요한 모든 환경변수와 정책은 [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md)와 [`VALIDATION.md`](VALIDATION.md)에 자세히 정리되어 있습니다.
 
-Supabase JWT 모드는 현재 HS256 JWT secret 방식입니다. 프로젝트가 비대칭 JWT/JWKS를 사용한다면 인증 의존성을 해당 프로젝트 설정에 맞춰 확장해야 합니다.
-
-## 9. 동네 카드 시드
-
-```bash
-python scripts/seed.py
-```
-
-광안리로 공유 동의된 서로 다른 사용자 4명의 익명 회상 조각이 삽입됩니다.
-
-그다음:
-
-```text
-POST /archive/places/광안리/card
-```
-
-를 호출하면 동네 추억 카드가 생성됩니다.
-
-`ADMIN_KEY`를 설정했다면 요청에 아래 헤더가 필요합니다.
-
-```text
-X-Admin-Key: 설정한_키
-```
-
-### 관리자 계정과 동네 카드 삭제
-
-데모 사용자 이름을 `admin`으로 바꾸는 것은 관리자 로그인이 아닙니다. 관리자 계정은 아래 환경변수로 별도 설정합니다.
-
-```env
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=충분히_긴_관리자_비밀번호
-ADMIN_TOKEN_SECRET=별도로_생성한_긴_무작위_문자열
-ADMIN_TOKEN_HOURS=8
-```
-
-`ADMIN_TOKEN_SECRET`은 `openssl rand -hex 32`로 생성할 수 있으며 비밀번호와 다른 값을 사용해야 합니다. 서버를 재시작한 뒤 화면 상단의 `관리자 로그인`을 이용합니다. 로그인 토큰은 현재 브라우저 탭 세션에만 저장되고, 관리자에게만 동네 카드의 `동네 카드 삭제` 버튼이 표시됩니다. 삭제해도 사용자가 공유한 비식별 기억 조각은 유지되므로 나중에 관리자가 카드를 다시 생성할 수 있습니다.
-
-기존 자동화나 발표 스크립트를 위한 `ADMIN_KEY` 헤더 방식은 동네 카드 생성 API에 한해 호환 목적으로 유지됩니다. 동네 카드 삭제는 반드시 관리자 계정 로그인 토큰을 요구합니다.
-
-## 10. 실제 서버 스모크 테스트
-
-서버 실행 후:
-
-```bash
-python scripts/smoke_test.py
-```
-
-등록부터 추억 카드 생성까지 HTTP 요청으로 점검합니다.
-
-## 상태 전이
-
-```text
-registered
-  → OCR 선택 시 parsed
-  → extracted
-  → processed
-  → recall_in_progress
-  → 1차 완료 후 processed
-  → 2차 완료 후 recalled
-```
-
-각 AI 단계는 `pending`, `processing`, `completed`, `skipped`, `failed` 상태를 별도로 저장합니다.
-
-## 구현상 의도적인 선택
-
-- 동네 카드는 자동 cron이 아니라 수동 버튼으로 생성합니다.
-- 기여자 수는 레코드 수가 아니라 서로 다른 `owner_id` 수로 판정합니다.
-- 같은 사용자의 여러 기록만으로 최소 인원을 충족할 수 없습니다.
-- 카드 공유 기본값은 비공유입니다.
-- 사용자가 공유를 취소하면 동네 기여 레코드도 삭제합니다.
-- 정확도 점수, 정답률, 오답 판정 필드는 존재하지 않습니다.
+---
