@@ -61,6 +61,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    if settings.environment != "production":
+        @app.middleware("http")
+        async def disable_static_cache(request: Request, call_next):
+            # 개발 중 정적 파일(특히 JS 모듈)이 브라우저에 그대로 캐싱되어 코드를 고쳐도
+            # 반영되지 않는 문제를 막기 위해, /demo 정적 파일은 항상 재검증하도록 한다.
+            response = await call_next(request)
+            if request.url.path.startswith("/demo"):
+                response.headers["Cache-Control"] = "no-cache, must-revalidate"
+            return response
+
     @app.exception_handler(ServiceError)
     async def service_error_handler(_: Request, exc: ServiceError):
         return JSONResponse(

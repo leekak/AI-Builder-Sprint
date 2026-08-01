@@ -90,6 +90,10 @@ export function adminDelete(path) {
   return api(path, { method: 'DELETE', headers: adminHeaders() });
 }
 
+export function adminGet(path) {
+  return api(path, { headers: adminHeaders() });
+}
+
 export async function protectedImage(url) {
   const response = await fetch(url, { headers: requestHeaders() });
   if (!response.ok) throw new Error('사진을 불러오지 못했습니다.');

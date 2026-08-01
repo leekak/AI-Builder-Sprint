@@ -29,7 +29,7 @@ async function initialize() {
   document.addEventListener('memorydeleted', () => Promise.all([loadDue(), loadCards(), loadTownCards(), updateTownStatus(), loadTownMap()]));
   document.addEventListener('cardcreated', () => Promise.all([loadCards(), loadDue()]));
   document.addEventListener('townchanged', () => Promise.all([updateTownStatus(), loadTownMap()]));
-  document.addEventListener('adminchange', loadTownCards);
+  document.addEventListener('adminchange', () => Promise.all([loadTownCards(), updateTownStatus()]));
   $('#userId').addEventListener('change', () => Promise.all([loadMemoriesCount(), loadRecentMemories(), loadDue(), loadCards()]));
   try {
     await loadPlaceTags();

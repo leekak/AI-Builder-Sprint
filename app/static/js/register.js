@@ -111,6 +111,9 @@ async function submitMemory(event) {
   const form = event.currentTarget;
   const file = form.image.files?.[0];
   if (form.use_ocr.checked && !file) return toast('사진 속 글자를 활용하려면 사진을 먼저 선택해 주세요.', 'error');
+  if (form.memory_date.value > new Date().toISOString().slice(0, 10)) {
+    return toast('기억 날짜는 오늘 이후로 설정할 수 없어요.', 'error');
+  }
 
   const data = new FormData();
   ['comment', 'memory_date', 'first_recall_days', 'second_recall_days', 'place_label'].forEach((name) => {
@@ -134,6 +137,7 @@ async function submitMemory(event) {
     form.first_recall_days.value = '7'; form.second_recall_days.value = '30';
     $('#commentCount').textContent = '0'; $('#imagePreview').classList.add('hidden');
     $('#uploadCopy').classList.remove('hidden'); $('#uploadZone').classList.remove('has-image');
+    $('#removeImage').classList.add('hidden'); $('#replaceHint').classList.add('hidden');
     await loadMemoriesCount();
     result.innerHTML = '<b>기억을 안전하게 저장했어요.</b><br><span>이제 AI가 회상을 위한 맥락을 정리합니다.</span>';
     await processMemory(memory.id);
@@ -146,6 +150,14 @@ async function submitMemory(event) {
 
 export function initRegister() {
   const form = $('#memoryForm');
+  const todayStr = new Date().toISOString().slice(0, 10);
+  form.memory_date.max = todayStr;
+  form.memory_date.addEventListener('change', () => {
+    if (form.memory_date.value > todayStr) {
+      form.memory_date.value = todayStr;
+      toast('기억 날짜는 오늘 이후로 설정할 수 없어요.', 'error');
+    }
+  });
   form.addEventListener('submit', submitMemory);
   $('#refreshMemories')?.addEventListener('click', loadRecentMemories);
   $('#demoPreset')?.addEventListener('click', () => {
@@ -173,9 +185,18 @@ export function initRegister() {
     const preview = $('#imagePreview');
     if (!file) {
       preview.classList.add('hidden'); $('#uploadCopy').classList.remove('hidden'); $('#uploadZone').classList.remove('has-image');
+      $('#removeImage').classList.add('hidden'); $('#replaceHint').classList.add('hidden');
       return;
     }
     preview.src = URL.createObjectURL(file); preview.classList.remove('hidden');
     $('#uploadCopy').classList.add('hidden'); $('#uploadZone').classList.add('has-image');
+    $('#removeImage').classList.remove('hidden'); $('#replaceHint').classList.remove('hidden');
+  });
+  $('#removeImage').addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    form.image.value = '';
+    form.image.dispatchEvent(new Event('change'));
+    toast('사진을 삭제했어요. 다른 사진을 다시 선택할 수 있어요.');
   });
 }

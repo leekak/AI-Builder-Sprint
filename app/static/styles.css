@@ -23,6 +23,24 @@
 .upload-copy{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:7px;pointer-events:none}
 .upload.has-image{padding:10px;min-height:220px;background:#eee8dc}
 .upload img{display:block;max-height:360px;object-fit:contain}
+.remove-image{position:absolute;top:10px;right:10px;z-index:2;background:rgba(36,38,32,.72);color:#fff;border:0;padding:8px 13px;font-size:11px;border-radius:20px}
+.remove-image:hover{background:rgba(36,38,32,.9)}
+.preview-conflict{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:#faf2ea;color:#765b4e;font-size:11px;line-height:1.65}
+.contributions-heading{font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px}
+.contribution-fragment{border-left:3px solid var(--green);background:var(--paper2);border-radius:8px;padding:12px 15px;margin-bottom:8px}
+.contribution-fragment .meta{margin-bottom:5px}
+.contribution-fragment p{margin:4px 0;font-size:12px;line-height:1.6}
+.contribution-fragment p b{color:var(--orange);font-weight:700;margin-right:5px}
+#townContributions{margin-bottom:22px}
+body.admin-mode .hero,
+body.admin-mode .tabs button[data-tab="register"],
+body.admin-mode .tabs button[data-tab="recall"],
+body.admin-mode .tabs button[data-tab="cards"],
+body.admin-mode #register,
+body.admin-mode #recall,
+body.admin-mode #cards{display:none!important}
+body.admin-mode .tabs{grid-template-columns:1fr}
+.replace-hint{position:absolute;bottom:10px;left:0;right:0;text-align:center;color:var(--muted);font-size:10px;pointer-events:none}
 .flow-guide{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border:1px solid #d9c9b7;border-radius:14px;background:#fff8ed;color:#6e5845}
 .flow-guide b{font-size:13px;color:var(--ink)}
 .flow-guide span{font-size:11px;line-height:1.5}

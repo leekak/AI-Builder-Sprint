@@ -181,6 +181,9 @@ def create_memory(
     if not cleaned_comment:
         raise HTTPException(status_code=400, detail="코멘트를 입력해주세요.")
 
+    if memory_date > date.today():
+        raise HTTPException(status_code=400, detail="기억 날짜는 오늘 이후로 설정할 수 없습니다.")
+
     normalized_place_tag = (place_tag or "").strip() or None
     normalized_place_label = (place_label or "").strip() or None
     if normalized_place_tag and normalized_place_tag not in settings.place_tags:
