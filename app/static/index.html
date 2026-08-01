@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f4efe6" />
   <title>다시, 그날</title>
   <link rel="stylesheet" href="/demo/vendor/leaflet/dist/leaflet.css?v=1.9.4" />
-  <link rel="stylesheet" href="/demo/styles.css?v=20260730-map4" />
+  <link rel="stylesheet" href="/demo/styles.css?v=20260802-admin1" />
 </head>
 <body>
   <datalist id="placeTagsList"></datalist>
@@ -39,11 +39,11 @@
     <section id="register" class="panel active" aria-labelledby="registerTitle">
       <div class="panel-heading"><div><p class="eyebrow">STEP 01 · RECORD</p><h2 id="registerTitle">오늘의 한 장면을 맡겨주세요</h2></div><div class="heading-tools"><p>원본은 회상할 때까지 조용히 보관됩니다.</p><button type="button" id="demoPreset" class="ghost">발표용 예시 채우기</button></div></div>
       <form id="memoryForm" class="form-grid">
-        <label class="field wide"><span>짧은 코멘트 <em>필수</em></span><textarea name="comment" required maxlength="2000" placeholder="예: 비 오는 날 진우와 광안리에서 회를 먹고 바닷가를 걸었다."></textarea><small><span id="commentCount">0</span>/2,000자</small></label>
+        <label class="field wide"><span>짧은 코멘트 <em>필수</em></span><textarea name="comment" required maxlength="2000" placeholder="예: 비 오는 날 민수와 광안리에서 회를 먹고 바닷가를 걸었다."></textarea><small><span id="commentCount">0</span>/2,000자</small></label>
         <label class="field"><span>기억 날짜</span><input type="date" name="memory_date" required /></label>
         <label class="field"><span>어디에서 있었나요? <em>선택</em></span><input type="text" name="place_label" id="placeLabel" maxlength="255" placeholder="예: 광안리 해수욕장 앞 작은 카페" /><small>자유롭게 적어주세요. 저장 후 AI가 동네 카드용 표준 지역을 추천합니다.</small></label>
         <details class="advanced wide"><summary>회상 가능일 직접 설정</summary><div class="form-grid compact"><label class="field"><span>첫 회상 가능일까지</span><div class="suffix"><input type="number" name="first_recall_days" min="0" max="30" value="7" /><b>일</b></div><small>0~30일 사이에서 설정할 수 있어요.</small></label><label class="field"><span>두 번째 회상 가능일까지</span><div class="suffix"><input type="number" name="second_recall_days" min="0" max="365" value="30" /><b>일</b></div><small>0~365일 사이에서 설정할 수 있어요.</small></label></div><small>해당 날짜가 되면 ‘오늘의 회상’에 나타납니다. 현재 버전은 별도의 푸시 알림을 보내지 않습니다.</small></details>
-        <label class="upload wide" id="uploadZone"><input class="file-input" type="file" name="image" accept="image/jpeg,image/png,image/webp" /><span class="upload-copy" id="uploadCopy"><span class="upload-icon">＋</span><b>사진 한 장을 더해보세요</b><small>JPG, PNG, WEBP · 최대 10MB · 선택 사항</small></span><img id="imagePreview" class="hidden" alt="선택한 사진 미리보기" /></label>
+        <label class="upload wide" id="uploadZone"><input class="file-input" type="file" name="image" accept="image/jpeg,image/png,image/webp" /><span class="upload-copy" id="uploadCopy"><span class="upload-icon">＋</span><b>사진 한 장을 더해보세요</b><small>JPG, PNG, WEBP · 최대 10MB · 선택 사항</small></span><img id="imagePreview" class="hidden" alt="선택한 사진 미리보기" /><button type="button" id="removeImage" class="ghost remove-image hidden">사진 삭제</button><small class="replace-hint hidden" id="replaceHint">사진을 다시 클릭하면 다른 사진으로 교체할 수 있어요</small></label>
         <label class="toggle wide"><input type="checkbox" name="use_ocr" /><span></span><div><b>사진 속 글자도 기억에 활용하기</b><small>티켓, 영수증, 손편지처럼 글자가 있는 사진에만 켜주세요.</small></div></label>
         <button class="primary wide" type="submit"><span>기억을 맡기고 맥락 정리하기</span><i aria-hidden="true">→</i></button>
       </form>
@@ -93,6 +93,7 @@
         <p id="townMapFallback" class="map-fallback hidden">지도를 불러오지 못했어요. 아래 장소 검색과 카드 목록은 계속 사용할 수 있습니다.</p>
       </section>
       <div class="town-controls"><label class="field"><span>살펴볼 장소</span><input id="townPlace" list="placeTagsList" value="" placeholder="장소를 검색하거나 지도에서 선택" autocomplete="off" /></label><div id="townStatus" class="contribution-status" aria-live="polite"></div><button id="generateTown" class="primary">동네 카드 만들기</button></div>
+      <div id="townContributions" class="hidden"></div>
       <div id="townCards" class="card-grid"><div class="empty-state"><span>⌂</span><h3>아직 완성된 동네 카드가 없어요</h3><p>같은 장소를 기억하는 사람들이 모이면 공동체의 이야기가 시작됩니다.</p></div></div>
     </section>
   </main>
@@ -103,8 +104,9 @@
       <h2>동네에 공유될 내용을 확인해 주세요</h2>
       <p class="dialog-copy">개인 원문 대신 이름·소속·희귀한 사건을 제거하고 일반화한 조각만 저장합니다.</p>
       <div class="preview-place" id="previewPlace"></div>
+      <div class="preview-conflict hidden" id="previewConflict"></div>
       <div class="preview-fragments"><div><small>원본 공개 전 회상에서</small><p id="previewPre"></p></div><div id="previewPostWrap"><small>원본을 본 뒤 회상에서</small><p id="previewPost"></p></div></div>
-      <div class="dialog-actions"><button value="cancel" class="ghost">취소</button><button value="confirm" class="primary">이 내용으로 공유</button></div>
+      <div class="dialog-actions"><button value="cancel" class="ghost">취소</button><button value="confirm" class="primary" id="previewConfirmButton">이 내용으로 공유</button></div>
     </form>
   </dialog>
 

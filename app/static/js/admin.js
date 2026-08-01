@@ -1,5 +1,5 @@
 import { adminPost, get, isAdmin, setAdminToken } from './api.js';
-import { $, toast } from './utils.js';
+import { $, switchTab, toast } from './utils.js';
 
 function renderAdminState() {
   const button = $('#adminSessionButton');
@@ -7,6 +7,9 @@ function renderAdminState() {
   button.textContent = active ? '관리자 로그아웃' : '관리자 로그인';
   button.classList.toggle('active-admin', active);
   document.body.classList.toggle('admin-mode', active);
+  // 관리자 계정은 동네 추억 카드 검열 전용이라, 로그인하는 순간 다른 탭은 숨기고 이 화면으로 고정한다.
+  // 일반 사용자의 새로고침 시 마지막 탭(URL 해시)을 그대로 유지하기 위해, 로그아웃 시에는 강제로 옮기지 않는다.
+  if (active) switchTab('town');
 }
 
 async function verifyStoredSession() {

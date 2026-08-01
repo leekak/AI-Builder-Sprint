@@ -1,12 +1,30 @@
-import { adminDelete, adminPost, get, isAdmin } from './api.js';
+import { adminDelete, adminGet, adminPost, get, isAdmin } from './api.js';
 import { $, emptyState, escapeHtml, formatDate, state, toast } from './utils.js';
 import { loadTownMap } from './map.js';
+
+async function loadPlaceContributions(place) {
+  const box = $('#townContributions');
+  if (!isAdmin()) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = emptyState('◌', '기여 조각을 불러오는 중이에요', '잠시만 기다려 주세요.');
+  try {
+    const items = await adminGet(`/archive/places/${encodeURIComponent(place)}/contributions`);
+    if (!items.length) {
+      box.innerHTML = emptyState('◌', '아직 모인 회상 조각이 없어요', '누군가 이 장소로 공유하면 여기에 익명으로 표시됩니다.');
+      return;
+    }
+    box.innerHTML = `<h3 class="contributions-heading">관리자용 · 모인 회상 조각 ${items.length}개 (작성자 비공개)</h3>` + items.map((item, index) => `<article class="contribution-fragment"><div class="meta">조각 ${index + 1} · ${formatDate(item.created_at, true)}</div><p><b>원본 공개 전</b> ${escapeHtml(item.pre_reveal_text || '(없음)')}</p>${item.post_reveal_text ? `<p><b>원본 공개 후</b> ${escapeHtml(item.post_reveal_text)}</p>` : ''}</article>`).join('');
+  } catch (error) {
+    box.innerHTML = emptyState('!', '기여 조각을 불러오지 못했어요', error.message);
+  }
+}
 
 export async function updateTownStatus() {
   const place = $('#townPlace').value;
   if (!place || !state.placeTags.includes(place)) {
     $('#townStatus').textContent = place ? '목록에서 표준 지역을 선택해 주세요.' : '살펴볼 지역을 검색해 주세요.';
     $('#generateTown').disabled = true;
+    $('#townContributions').classList.add('hidden');
     return;
   }
   const box = $('#townStatus');
@@ -28,6 +46,7 @@ export async function updateTownStatus() {
     $('#generateTown').textContent = status.privacy_review_required ? '개인정보 보호 재처리' : (status.latest_card_id ? '동네 카드 갱신하기' : '동네 카드 만들기');
     $('#generateTown').disabled = !status.can_generate;
   } catch (error) { box.textContent = error.message; $('#generateTown').disabled = true; }
+  await loadPlaceContributions(place);
 }
 
 export async function loadTownCards() {

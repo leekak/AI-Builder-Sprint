@@ -184,6 +184,7 @@ class ShareToTownRequest(BaseModel):
     consent: bool
     place_tag: str | None = None
     preview_token: str | None = None
+    replace_existing: bool = False
 
 
 class TownSharePreviewRequest(BaseModel):
@@ -196,6 +197,8 @@ class TownSharePreviewResponse(BaseModel):
     safe_pre_text: str
     safe_post_text: str
     preview_token: str
+    conflicting_card_id: str | None = None
+    conflicting_card_title: str | None = None
 
 
 class TownShareResponse(BaseModel):
@@ -215,6 +218,16 @@ class TownCardResponse(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class TownContributionAdminResponse(BaseModel):
+    """관리자 전용: 익명 처리된 회상 조각 목록 (작성자 식별 정보는 포함하지 않는다)."""
+
+    id: str
+    place_tag: str
+    pre_reveal_text: str
+    post_reveal_text: str
+    created_at: datetime
 
 
 class TownPlaceStatusResponse(BaseModel):

@@ -25,6 +25,8 @@ def client(tmp_path):
         auth_mode="demo",
         town_min_contributors=3,
         admin_key=None,
+        admin_password=None,
+        admin_token_secret=None,
     )
     app = create_app(settings)
     with TestClient(app) as test_client:

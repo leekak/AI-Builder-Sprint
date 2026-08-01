@@ -12,7 +12,12 @@ from app.config import Settings
 from app.dependencies import get_ai, get_db, get_settings, require_admin, require_admin_account
 from app.errors import ServiceError
 from app.models import TownArchivedFragment, TownCard, TownContribution, utcnow
-from app.schemas import PlaceTagsResponse, TownCardResponse, TownPlaceStatusResponse
+from app.schemas import (
+    PlaceTagsResponse,
+    TownCardResponse,
+    TownContributionAdminResponse,
+    TownPlaceStatusResponse,
+)
 from app.serializers import town_card_to_dict
 from app.services.ai import AIService
 from app.services.community import contributor_key
@@ -156,6 +161,40 @@ def list_town_cards(db: Session = Depends(get_db)):
     return [town_card_to_dict(card) for card in safe_cards]
 
 
+@router.get(
+    "/archive/places/{place_tag}/contributions",
+    response_model=list[TownContributionAdminResponse],
+)
+def list_place_contributions(
+    place_tag: str,
+    _: str = Depends(require_admin_account),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """관리자 전용: 아직 동네 카드로 합쳐지기 전, 장소별로 모인 익명 회상 조각 목록.
+
+    town_contributions에는 원문이 아니라 공유 시점에 이미 비식별화된 문장만 저장되어 있어
+    작성자를 특정할 수 있는 정보는 응답에 포함하지 않는다.
+    """
+    if place_tag not in settings.place_tags:
+        raise HTTPException(status_code=404, detail="등록되지 않은 장소 태그입니다.")
+    contributions = db.scalars(
+        select(TownContribution)
+        .where(TownContribution.place_tag == place_tag)
+        .order_by(TownContribution.created_at.asc())
+    ).all()
+    return [
+        {
+            "id": item.id,
+            "place_tag": item.place_tag,
+            "pre_reveal_text": item.pre_reveal_text,
+            "post_reveal_text": item.post_reveal_text,
+            "created_at": item.created_at,
+        }
+        for item in contributions
+    ]
+
+
 @router.delete("/archive/places/cards/{card_id}")
 def delete_town_card(
     card_id: str,
@@ -221,17 +260,17 @@ def get_place_status(
     return status
 
 
-@router.post("/archive/places/{place_tag}/card", response_model=TownCardResponse, status_code=201)
-def create_town_card(
+def generate_town_card_if_ready(
+    db: Session,
+    settings: Settings,
+    ai: AIService,
     place_tag: str,
-    _: None = Depends(require_admin),
-    db: Session = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-    ai: AIService = Depends(get_ai),
-):
-    if place_tag not in settings.place_tags:
-        raise HTTPException(status_code=404, detail="등록되지 않은 장소 태그입니다.")
+) -> tuple[TownCard | None, dict]:
+    """기여자 수가 충족되면 동네 카드를 자동으로 생성/갱신한다.
 
+    수동 트리거(관리자 버튼)와 opt-in 공유 직후 자동 트리거 양쪽에서 공유하는 핵심 로직이다.
+    아직 조건이 안 되면 (None, 현재 상태)를 반환하고 예외를 던지지 않는다.
+    """
     contributions = db.scalars(
         select(TownContribution)
         .where(TownContribution.place_tag == place_tag)
@@ -244,19 +283,9 @@ def create_town_card(
     ).all()
     current_keys = _current_contributor_keys(contributions, archived_fragments, settings)
     latest = _latest_place_card(db, place_tag)
-    published_keys = _published_contributor_keys(latest, contributions, archived_fragments, settings)
-    new_keys = current_keys - published_keys
-    required_count = len(current_keys) if not latest else len(new_keys)
-    privacy_review_required = bool(latest and PRIVACY_PIPELINE_MARKER not in (latest.source_contribution_ids or []))
-    if required_count < settings.town_min_contributors and not privacy_review_required:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "message": "기존 카드 갱신에는 새로운 기여자 3명이 필요합니다." if latest else "아직 동네 추억 카드를 만들기에 기여자가 부족합니다.",
-                "current": required_count,
-                "required": settings.town_min_contributors,
-            },
-        )
+    status = _place_status_dict(place_tag, contributions, archived_fragments, latest, settings)
+    if not status["can_generate"]:
+        return None, status
 
     # 같은 사용자의 여러 카드는 하나의 익명 조각으로 합쳐 모든 참여자의 가중치를 동일하게 한다.
     fragments = _group_fragments_by_contributor(contributions, archived_fragments, settings)
@@ -346,4 +375,28 @@ def create_town_card(
         db.add(card)
     db.commit()
     db.refresh(card)
+    return card, status
+
+
+@router.post("/archive/places/{place_tag}/card", response_model=TownCardResponse, status_code=201)
+def create_town_card(
+    place_tag: str,
+    _: None = Depends(require_admin),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    ai: AIService = Depends(get_ai),
+):
+    """관리자 수동 트리거. 조건이 안 되면 명확한 사유와 함께 409를 반환한다."""
+    if place_tag not in settings.place_tags:
+        raise HTTPException(status_code=404, detail="등록되지 않은 장소 태그입니다.")
+    card, status = generate_town_card_if_ready(db, settings, ai, place_tag)
+    if card is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "기존 카드 갱신에는 새로운 기여자 3명이 필요합니다." if status["latest_card_id"] else "아직 동네 추억 카드를 만들기에 기여자가 부족합니다.",
+                "current": status["new_contributors"] if status["latest_card_id"] else status["distinct_contributors"],
+                "required": status["minimum_required"],
+            },
+        )
     return town_card_to_dict(card)

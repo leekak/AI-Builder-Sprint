@@ -33,11 +33,11 @@ def test_town_card_requires_distinct_contributors_and_uses_opt_in(client):
     status = client.get("/archive/places/광안리/status")
     assert status.status_code == 200
     assert status.json()["distinct_contributors"] == 3
-    assert status.json()["can_generate"] is True
+    # 3번째 opt-in 공유 시점에 관리자 개입 없이 자동으로 카드가 생성되어, 더 만들 필요가 없어야 한다.
+    assert status.json()["can_generate"] is False
 
-    generated = client.post("/archive/places/광안리/card")
-    assert generated.status_code == 201, generated.text
-    town_card = generated.json()
+    places = client.get("/archive/places").json()
+    town_card = next(item for item in places if item["place"] == "광안리")
     assert town_card["contributors"] == 3
     assert town_card["place"] == "광안리"
     assert "바다 풍경" in town_card["story"]
@@ -111,7 +111,8 @@ def test_town_card_same_contributions_cannot_be_generated_twice(client):
             json={"consent": True, "place_tag": "광안리"},
         ).status_code == 200
 
-    assert client.post("/archive/places/광안리/card").status_code == 201
+    # 3번째 공유 시점에 이미 자동으로 카드가 생성되어 있다.
+    assert any(item["place"] == "광안리" for item in client.get("/archive/places").json())
     status = client.get("/archive/places/광안리/status").json()
     assert status["has_new_contributions"] is False
     assert status["new_contributors"] == 0
@@ -133,7 +134,8 @@ def test_town_card_is_updated_only_after_three_new_distinct_users(client):
 
     for user in ("initial-a", "initial-b", "initial-c"):
         contribute(user)
-    first = client.post("/archive/places/광안리/card").json()
+    # 3번째 공유 시점에 관리자 개입 없이 자동으로 첫 카드가 생성된다.
+    first = next(item for item in client.get("/archive/places").json() if item["place"] == "광안리")
     assert first["version"] == 1
 
     for user in ("new-a", "new-b"):
@@ -143,29 +145,55 @@ def test_town_card_is_updated_only_after_three_new_distinct_users(client):
     assert waiting["can_generate"] is False
 
     contribute("new-c")
-    ready = client.get("/archive/places/광안리/status").json()
-    assert ready["new_contributors"] == 3
-    assert ready["can_generate"] is True
-    updated = client.post("/archive/places/광안리/card").json()
+    # 새 참여자 3명째(new-c) 공유 시점에 자동으로 같은 카드가 v2로 갱신된다.
+    updated = next(item for item in client.get("/archive/places").json() if item["place"] == "광안리")
     assert updated["id"] == first["id"]
     assert updated["version"] == 2
     assert updated["contributors"] == 6
     assert len(client.get("/archive/places").json()) == 1
 
+    ready = client.get("/archive/places/광안리/status").json()
+    assert ready["new_contributors"] == 0
+    assert ready["can_generate"] is False
 
-def test_same_user_multiple_cards_count_as_one_town_contributor(client):
-    for index in range(3):
-        user = "one-heavy-user"
-        card = complete_one_recall(client, user=user, new_detail=f"개인 기억 {index}")
-        assert client.post(
-            f"/cards/{card['id']}/share-to-town",
-            headers={"X-User-Id": user},
-            json={"consent": True, "place_tag": "광안리"},
-        ).status_code == 200
+
+def test_same_user_second_card_to_same_place_requires_explicit_replace(client):
+    user = "one-heavy-user"
+    first_card = complete_one_recall(client, user=user, new_detail="개인 기억 0")
+    assert client.post(
+        f"/cards/{first_card['id']}/share-to-town",
+        headers={"X-User-Id": user},
+        json={"consent": True, "place_tag": "광안리"},
+    ).status_code == 200
+
+    second_card = complete_one_recall(client, user=user, new_detail="개인 기억 1")
+    conflict = client.post(
+        f"/cards/{second_card['id']}/share-to-town",
+        headers={"X-User-Id": user},
+        json={"consent": True, "place_tag": "광안리"},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["conflicting_card_id"] == first_card["id"]
+
+    # 기존 조각은 그대로 남아있고, 아직 다른 사람 기여로 새로 잡히지 않는다.
     status = client.get("/archive/places/광안리/status").json()
-    assert status["total_fragments"] == 3
+    assert status["total_fragments"] == 1
     assert status["distinct_contributors"] == 1
     assert status["can_generate"] is False
+
+    replaced = client.post(
+        f"/cards/{second_card['id']}/share-to-town",
+        headers={"X-User-Id": user},
+        json={"consent": True, "place_tag": "광안리", "replace_existing": True},
+    )
+    assert replaced.status_code == 200, replaced.text
+
+    status = client.get("/archive/places/광안리/status").json()
+    assert status["total_fragments"] == 1
+    assert status["distinct_contributors"] == 1
+
+    old_card = client.get(f"/cards/{first_card['id']}", headers={"X-User-Id": user}).json()
+    assert old_card["shared_to_town"] is False
 
 
 def test_town_card_censors_profanity(client):
@@ -179,9 +207,8 @@ def test_town_card_censors_profanity(client):
             headers={"X-User-Id": user},
             json={"consent": True, "place_tag": "광안리"},
         ).status_code == 200
-    generated = client.post("/archive/places/광안리/card")
-    assert generated.status_code == 201, generated.text
-    public_text = " ".join(generated.json()[key] for key in ("card_title", "story", "reflection"))
+    generated = next(item for item in client.get("/archive/places").json() if item["place"] == "광안리")
+    public_text = " ".join(generated[key] for key in ("card_title", "story", "reflection"))
     assert contains_profanity(public_text) is False
 
 
@@ -219,10 +246,9 @@ def test_town_card_removes_personal_names_groups_and_unique_events(client):
             json={"consent": True, "place_tag": "광안리"},
         ).status_code == 200
 
-    response = client.post("/archive/places/광안리/card")
-    assert response.status_code == 201, response.text
+    town_card = next(item for item in client.get("/archive/places").json() if item["place"] == "광안리")
     public_text = " ".join(
-        response.json()[field] for field in ("card_title", "story", "reflection")
+        town_card[field] for field in ("card_title", "story", "reflection")
     )
     for sensitive in ["진우", "디바", "3총사", "범죄도시", "연어초밥", "부산대", "온천천"]:
         assert sensitive not in public_text

@@ -45,9 +45,8 @@ def test_delete_memory_preserves_only_anonymous_fragment_after_publish(client):
         _share(client, user, card)
         cards.append((user, card))
 
-    generated = client.post("/archive/places/광안리/card")
-    assert generated.status_code == 201, generated.text
-    town_card_id = generated.json()["id"]
+    generated = next(item for item in client.get("/archive/places").json() if item["place"] == "광안리")
+    town_card_id = generated["id"]
 
     user, card = cards[0]
     deleted = client.delete(f"/memories/{card['memory_id']}", headers={"X-User-Id": user})

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -23,6 +24,7 @@ from app.schemas import (
     TownShareResponse,
 )
 from app.serializers import card_to_dict
+from app.api.archive import generate_town_card_if_ready
 from app.services.ai import AIService
 from app.services.card_image import CardImageService
 from app.services.storage import StorageBackend
@@ -36,6 +38,7 @@ from app.services.community import (
 )
 
 router = APIRouter(prefix="/cards", tags=["cards"])
+logger = logging.getLogger(__name__)
 
 
 def _card_image_response(card: MemoryCard, request: Request) -> dict:
@@ -295,6 +298,33 @@ def share_card_to_town(
         detach_or_delete_contribution(db, existing, ai=ai, settings=settings)
         db.flush()
         existing = None
+
+    # 같은 사용자가 다른 기억(카드)으로 이미 이 장소에 공유해 둔 경우, 명시적으로 교체 확인을 받는다.
+    conflicting = db.scalar(
+        select(TownContribution).where(
+            TownContribution.owner_id == owner_id,
+            TownContribution.place_tag == place_tag,
+            TownContribution.card_id != card.id,
+        )
+    )
+    if conflicting:
+        conflicting_card = db.get(MemoryCard, conflicting.card_id)
+        if not payload.replace_existing:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "이미 이 장소에 다른 기억이 등록되어 있습니다.",
+                    "conflicting_card_id": conflicting.card_id,
+                    "conflicting_card_title": conflicting_card.card_title if conflicting_card else None,
+                },
+            )
+        # 이미 발행된 동네 카드에 쓰인 조각이라면 익명 보존 후 교체, 아니면 그냥 삭제 후 교체한다.
+        detach_or_delete_contribution(db, conflicting, ai=ai, settings=settings)
+        if conflicting_card:
+            conflicting_card.shared_to_town = False
+            conflicting_card.place_tag = None
+        db.flush()
+
     participant_key = contributor_key(settings, owner_id=owner_id, place_tag=place_tag)
     if existing:
         contribution = existing
@@ -324,6 +354,14 @@ def share_card_to_town(
     memory.updated_at = utcnow()
     db.commit()
     db.refresh(contribution)
+
+    # 서로 다른 기여자 3명이 모이면 관리자 개입 없이 자동으로 동네 카드를 생성/갱신한다.
+    # 생성 파이프라인 실패가 공유 자체를 막지 않도록 실패는 조용히 넘어간다 (관리자가 나중에 수동 재시도 가능).
+    try:
+        generate_town_card_if_ready(db, settings, ai, place_tag)
+    except Exception:
+        logger.exception("동네 카드 자동 생성 실패 (place_tag=%s)", place_tag)
+
     return {
         "card_id": card.id,
         "consent": True,
@@ -355,6 +393,16 @@ def preview_card_for_town(
         pre_text=pre_text,
         post_text=post_text,
     )
+    conflicting = db.scalar(
+        select(TownContribution).where(
+            TownContribution.owner_id == owner_id,
+            TownContribution.place_tag == place_tag,
+            TownContribution.card_id != card.id,
+        )
+    )
+    conflicting_card = (
+        db.get(MemoryCard, conflicting.card_id) if conflicting is not None else None
+    )
     return {
         "card_id": card.id,
         "place_tag": place_tag,
@@ -368,4 +416,6 @@ def preview_card_for_town(
             safe_pre_text=safe_pre_text,
             safe_post_text=safe_post_text,
         ),
+        "conflicting_card_id": conflicting_card.id if conflicting_card else None,
+        "conflicting_card_title": conflicting_card.card_title if conflicting_card else None,
     }
