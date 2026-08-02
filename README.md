@@ -174,7 +174,7 @@
 ### 5-1. 공유 미리보기와 비식별화
 
 - **대상 사용자**: 카드를 완성한 사용자 (opt-in)
-- **기능 설명**: 공유 버튼을 눌러도 바로 저장하지 않습니다. Solar가 이름·소속·경로 등을 제거한 미리보기 문장을 10분 유효한 서버 서명과 함께 보여주고, 사용자가 최종 확인해야 실제로 저장됩니다.
+- **기능 설명**: 공유 버튼을 눌러도 바로 저장하지 않습니다. Solar가 이름·소속·경로 등을 제거한 뒤, 원본 공개 전/후 회상을 하나로 합친 요약 문장 한 개를 10분 유효한 서버 서명과 함께 보여주고, 사용자가 최종 확인해야 실제로 저장됩니다.
 - **주요 SQL**:
 
     ```sql
@@ -182,10 +182,10 @@
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
     ```
 
-### 5-2. 동네 카드 생성 (최소 3명)
+### 5-2. 동네 카드 생성 (최소 3명, 자동)
 
-- **대상 사용자**: 수동 트리거(발표자/관리자 화면의 버튼)
-- **기능 설명**: 같은 장소 태그에 서로 다른 사용자 3명의 조각이 모이면 카드를 생성합니다. 기여자 수는 레코드 수가 아니라 서로 다른 사용자 수로 판정하며, 같은 사용자의 여러 조각은 하나로 묶어 한 명으로 집계합니다.
+- **대상 사용자**: 시스템(카드를 동네에 공유하는 순간 자동 실행) + 관리자(수동 재시도)
+- **기능 설명**: 카드를 동네에 공유하는 순간 서버가 같은 장소 태그의 기여자 수를 바로 확인해, 서로 다른 사용자 3명이 모이면 관리자 개입 없이 카드를 자동으로 생성·갱신합니다(`generate_town_card_if_ready`). 이 자동 생성이 실패해도 공유 자체는 막지 않고 조용히 넘어가며, 필요하면 `POST /archive/places/{place_tag}/card`로 관리자가 수동 재시도할 수 있습니다. 기여자 수는 레코드 수가 아니라 서로 다른 사용자 수로 판정하며, 같은 사용자의 여러 조각은 하나로 묶어 한 명으로 집계합니다.
 - **주요 SQL**:
 
     ```sql
@@ -265,9 +265,9 @@
 
 ---
 
-# 6️⃣ 프로젝트 실행 방법
+# 6️⃣ 로컬 실행 가이드
 
-1. Python 3.11 이상 가상환경을 만들고 의존성을 설치합니다.
+1. Python 3.11 이상 가상환경을 만들고 의존성을 설치합니다. (개발 환경은 Python 3.14 기준으로 검증했습니다.)
 
     ```bash
     python -m venv venv
@@ -275,13 +275,13 @@
     python -m pip install -r requirements.txt
     ```
 
-2. `.env.example`을 `.env`로 복사합니다. 기본값(`AI_MODE=mock`, `STORAGE_BACKEND=local`, SQLite)만으로도 외부 키 없이 전체 플로우가 동작합니다.
+2. `.env.example`을 `.env`로 복사합니다. 기본값(`AI_MODE=mock`, `CARD_IMAGE_MODE=mock`, `STORAGE_BACKEND=local`, SQLite)만으로도 외부 키 없이 전체 플로우가 동작합니다.
 
     ```bash
     cp .env.example .env
     ```
 
-3. 서버를 실행합니다.
+3. 서버를 실행합니다. (`uvicorn` reload 모드로 켜지며, `app/main.py`의 `create_app()`이 시작 시 SQLite 테이블을 자동 생성합니다.)
 
     ```bash
     python run.py
@@ -289,11 +289,12 @@
 
 4. 아래 주소로 접속합니다.
 
-    - 데모 UI: [http://127.0.0.1:8000/demo/](http://127.0.0.1:8000/demo/)
+    - 데모 UI: [http://127.0.0.1:8000/demo/](http://127.0.0.1:8000/demo/) — 상단 `사용자 로그인`에 `user1`처럼 원하는 아이디를 넣고 로그인하면 새로고침해도 그 사용자로 유지됩니다.
     - Swagger: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-    - 상태 확인: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
+    - 상태 확인: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) — 현재 `ai_mode`·`storage_backend`·`demo_mode` 등 실행 설정을 그대로 보여줍니다.
+    - 관리자 로그인: `.env`의 `ADMIN_USERNAME`/`ADMIN_PASSWORD`(기본값 `admin`/미설정 — 아래 환경변수 표 참고)로 로그인하면 동네 추억 카드 관리 화면으로 전환됩니다.
 
-5. (선택) 동네 카드 데모용 시드 데이터를 넣고, 동네 카드를 생성해봅니다.
+5. (선택) 동네 카드 데모용 시드 데이터를 넣고, 동네 카드를 생성해봅니다. 카드 공유 3명이 모이면 서버가 자동으로 동네 카드를 만들지만, 아래 API로 수동 재시도할 수도 있습니다.
 
     ```bash
     python scripts/seed.py
@@ -306,10 +307,77 @@
 6. (선택) 자동 테스트와 서버 스모크 테스트를 실행합니다.
 
     ```bash
-    python -m pytest
+    python -m pytest         # 41개 테스트, mock AI·SQLite·로컬 Storage로 격리 실행
     python scripts/smoke_test.py   # 서버가 실행 중이어야 합니다
     ```
 
-Supabase(Postgres+Storage), Upstage(Solar·Document Parse·Information Extract), Gemini(카드 이미지 생성), 관리자 계정, 회상 데모 압축 모드 등 실제 서비스 연동에 필요한 모든 환경변수와 정책은 [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md)와 [`VALIDATION.md`](VALIDATION.md)에 자세히 정리되어 있습니다.
+---
+
+# 7️⃣ 실행 · 배포 환경 정보
+
+| 구분 | 로컬 개발(기본값) | 실 서비스 배포 |
+| --- | --- | --- |
+| 실행 방식 | `python run.py` (uvicorn reload) | `Dockerfile` 기준 `uvicorn app.main:app --host 0.0.0.0 --port 8000` (reload 없이 실행) |
+| 데이터베이스 | SQLite (`sqlite:///./data/memory_recall.db`), 서버 시작 시 테이블 자동 생성 | Supabase PostgreSQL — `DATABASE_URL`을 Supabase Pooler 연결 문자열로 교체 (`sql/supabase_schema.sql`로 스키마 생성, `sql/migrations/`가 변경 이력) |
+| 파일 저장소 | `STORAGE_BACKEND=local`, `./data/uploads`에 저장 | `STORAGE_BACKEND=supabase` — `SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY` 필요 |
+| AI 처리 | `AI_MODE=mock` — 외부 API 호출 없이 고정된 결과 반환 | `AI_MODE=upstage`(또는 실패 시 mock으로 넘어가는 `auto`) — `UPSTAGE_API_KEY` 필요 |
+| 카드 이미지 생성 | `CARD_IMAGE_MODE=mock` | `CARD_IMAGE_MODE=gemini` — `GEMINI_API_KEY` 필요 |
+| 사용자 인증 | `AUTH_MODE=demo` — 프론트 상단 로그인 입력창의 아이디를 `X-User-Id`로 그대로 사용(브라우저 `localStorage`에 저장되어 새로고침에도 유지, 실제 신원 확인 아님) | `AUTH_MODE=supabase` — Supabase Auth가 발급한 JWT를 검증(`SUPABASE_JWT_SECRET` 필요), 프론트 로그인 연동은 아직 미구현 |
+| 정적 파일 캐시 | `ENVIRONMENT=development`일 때 `/demo` 응답에 `no-cache` 헤더를 강제해 JS/CSS 수정이 새로고침에 바로 반영됨 (`app/main.py`) | `ENVIRONMENT=production`이면 이 미들웨어가 빠져 브라우저 캐시가 정상 동작 |
+| CORS | `CORS_ORIGINS=["*"]` (기본값) | 배포 도메인만 허용하도록 좁혀서 설정 |
+| Docker 배포 | — | `docker build -t memory-recall .` 후 `docker run -p 8000:8000 --env-file .env memory-recall` (이미지에 한글 렌더링용 `fonts-noto-cjk` 포함) |
+
+관리자 계정, 회상 데모 압축 모드 등 시나리오별 실행 팁은 [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md)에, 자동/수동 검증 기록은 [`VALIDATION.md`](VALIDATION.md)에 자세히 정리되어 있습니다.
+
+---
+
+# 8️⃣ 환경변수 정보
+
+`.env.example`을 복사해 값을 채웁니다. **`.env`는 `.gitignore`에 포함되어 있어 커밋되지 않습니다.**
+
+| 분류 | 변수 | 기본값 | 설명 |
+| --- | --- | --- | --- |
+| 기본 실행 | `ENVIRONMENT` | `development` | `production`이 아니면 `/demo` 정적 파일에 no-cache 헤더를 강제합니다. |
+| | `DEBUG` | `false` | 디버그 로깅 여부. |
+| | `DATABASE_URL` | `sqlite:///./data/memory_recall.db` | SQLite 또는 Supabase Postgres 연결 문자열. |
+| | `AUTO_CREATE_TABLES` | `true` | 서버 시작 시 SQLAlchemy 테이블을 자동 생성할지 여부. |
+| 인증 | `AUTH_MODE` | `demo` | `demo` \| `header` \| `supabase`. `header`는 모든 요청에 `X-User-Id`가 필요, `supabase`는 JWT 검증. |
+| | `DEMO_USER_ID` | `demo-user` | `AUTH_MODE=demo`에서 사용자 미지정 시 기본 아이디. |
+| | `SUPABASE_JWT_SECRET` | (없음) | `AUTH_MODE=supabase`일 때 **필수**. |
+| 저장소 | `STORAGE_BACKEND` | `local` | `local` \| `supabase`. |
+| | `LOCAL_STORAGE_DIR` | `./data/uploads` | 로컬 저장 경로. |
+| | `MAX_UPLOAD_MB` | `10` | 업로드 이미지 최대 용량(MB). |
+| | `ALLOWED_IMAGE_TYPES` | `image/jpeg,image/png,image/webp` | 허용 이미지 MIME 타입. |
+| | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | (없음) | `STORAGE_BACKEND=supabase`일 때 **필수**. |
+| | `SUPABASE_STORAGE_BUCKET` | `memory-images` | Supabase Storage 버킷 이름. |
+| AI (Upstage) | `AI_MODE` | `mock` | `mock`(외부 호출 없음) \| `auto`(키 있으면 Upstage, 실패 시 mock) \| `upstage`(실패 시 그대로 오류). |
+| | `AI_FALLBACK_TO_MOCK` | `true` | `auto` 모드에서 Upstage 실패 시 mock으로 대체할지 여부. |
+| | `UPSTAGE_API_KEY` | (없음) | `AI_MODE=upstage`일 때 **필수**. |
+| | `UPSTAGE_BASE_URL` | `https://api.upstage.ai/v1` | Upstage API 베이스 URL. |
+| | `UPSTAGE_SOLAR_MODEL` | `solar-pro3` | 제목·요약·질문·비식별화 등에 쓰는 LLM. |
+| | `UPSTAGE_DOCUMENT_PARSE_URL` / `_MODEL` | 기본 제공 | 사진 속 글자 OCR. |
+| | `UPSTAGE_INFORMATION_EXTRACT_URL` / `_MODEL` | 기본 제공 | 사람·장소·활동·분위기 구조화 추출. |
+| | `UPSTAGE_TEXT_RENDER_FONT_PATH` | (자동 탐색) | 텍스트만 있는 기억을 이미지로 렌더링할 때 쓸 한글 글꼴 경로. |
+| | `UPSTAGE_TIMEOUT_SECONDS` | `60` | Upstage 호출 타임아웃(초). |
+| 카드 이미지 | `CARD_IMAGE_GENERATION_ENABLED` | `true` | 사진 없는 카드의 AI 이미지 생성 기능 자체를 켤지 여부. |
+| | `CARD_IMAGE_MODE` | `mock` | `mock` \| `auto` \| `gemini`. |
+| | `GEMINI_API_KEY` | (없음) | `CARD_IMAGE_MODE=gemini`일 때 **필수**. |
+| | `NANO_BANANA_MODEL` | `gemini-3.1-flash-image` | 카드 이미지 생성 모델. |
+| | `NANO_BANANA_TIMEOUT_SECONDS` | `120` | Gemini 호출 타임아웃(초). |
+| 회상 일정 | `DEMO_MODE` | `false` | `true`면 하루를 `DEMO_DAY_SECONDS`초로 압축(발표·데모용). |
+| | `DEMO_DAY_SECONDS` | `2` | 데모 모드에서 하루에 해당하는 초. |
+| | `FIRST_RECALL_DAYS` / `SECOND_RECALL_DAYS` | `7` / `30` | 1차·2차 회상까지 걸리는 기본 일수. |
+| | `ALLOW_EARLY_RECALL` | `false` | 회상 시각 이전에도 조회를 허용할지 여부(테스트용). |
+| 동네 추억 카드 · 관리자 | `TOWN_MIN_CONTRIBUTORS` | `3` | 동네 카드 생성에 필요한 최소 서로 다른 기여자 수. |
+| | `ADMIN_KEY` | (없음) | 레거시/보조 관리자 키(선택). |
+| | `ADMIN_USERNAME` | `admin` | 관리자 로그인 아이디. |
+| | `ADMIN_PASSWORD` | (없음) | 관리자 로그인 비밀번호. 설정 시 `ADMIN_TOKEN_SECRET`도 **필수**. |
+| | `ADMIN_TOKEN_SECRET` | (없음) | 관리자 JWT 서명 비밀값. |
+| | `ADMIN_TOKEN_HOURS` | `8` | 관리자 세션 유효 시간. |
+| | `SHARE_PREVIEW_SECRET` | `development-only-change-me` | 동네 공유 미리보기 서명 비밀값. 배포 시 충분히 긴 무작위 값으로 교체. |
+| | `PLACE_TAGS` | 부산 50개 지역 목록(JSON) | 동네 카드에 쓰는 표준 지역 화이트리스트. |
+| 기타 | `CORS_ORIGINS` | `["*"]` | 허용할 프론트엔드 오리진 목록(JSON). |
+
+값을 잘못 넣으면 서버가 뜨지 않고 바로 원인을 알려줍니다 (`app/config.py`의 `validate_runtime_configuration()`): 예를 들어 `AI_MODE=upstage`인데 `UPSTAGE_API_KEY`가 비어 있거나, `ADMIN_PASSWORD`만 설정하고 `ADMIN_TOKEN_SECRET`을 빼먹으면 시작 시점에 `RuntimeError`로 즉시 실패합니다.
 
 ---
