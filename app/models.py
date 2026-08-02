@@ -5,12 +5,42 @@ from typing import Any
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 from app.database import Base
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class UTCDateTime(TypeDecorator):
+    """DateTime(timezone=True)를 감싸서, SQLite처럼 타임존 정보를 저장하지 못하는
+    백엔드에서 값을 읽어올 때도 항상 UTC로 해석되도록 보장한다.
+
+    SQLite는 tz-aware datetime을 저장해도 그 정보를 유지하지 않기 때문에,
+    아무 처리 없이 그대로 읽으면 naive datetime(타임존 정보 없음)이 반환된다.
+    이 naive datetime이 API 응답으로 그대로 나가면 프론트엔드의
+    `new Date(...)`가 이를 UTC가 아니라 브라우저 로컬 시간으로 잘못 해석해서
+    실제 시각과 다르게 표시되는 문제가 생긴다.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class Memory(Base):
@@ -40,8 +70,8 @@ class Memory(Base):
     analysis: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     analysis_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    first_recall_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    second_recall_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    first_recall_at: Mapped[datetime] = mapped_column(UTCDateTime(), index=True)
+    second_recall_at: Mapped[datetime] = mapped_column(UTCDateTime(), index=True)
     current_recall_stage: Mapped[int] = mapped_column(Integer, default=1)
     recall_completed: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -50,8 +80,8 @@ class Memory(Base):
     share_to_town: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(32), default="registered", index=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
     recalls: Mapped[list["RecallSession"]] = relationship(back_populates="memory", cascade="all, delete-orphan")
     cards: Mapped[list["MemoryCard"]] = relationship(back_populates="memory", cascade="all, delete-orphan")
@@ -77,10 +107,10 @@ class RecallSession(Base):
     memory_not_recalled: Mapped[bool] = mapped_column(Boolean, default=False)
     newly_recalled_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    revealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    answered_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    revealed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
     memory: Mapped[Memory] = relationship(back_populates="recalls")
     card: Mapped["MemoryCard | None"] = relationship(back_populates="recall", uselist=False)
@@ -113,9 +143,9 @@ class MemoryCard(Base):
     image_generation_mode: Mapped[str | None] = mapped_column(String(40), nullable=True)
     image_generation_style: Mapped[str | None] = mapped_column(String(60), nullable=True)
     image_generation_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
-    image_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    image_generated_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
     memory: Mapped[Memory] = relationship(back_populates="cards")
     recall: Mapped[RecallSession] = relationship(back_populates="card")
@@ -137,7 +167,7 @@ class TownContribution(Base):
 
     pre_reveal_text: Mapped[str] = mapped_column(Text)
     post_reveal_text: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
     card: Mapped[MemoryCard] = relationship(back_populates="contribution")
 
@@ -152,7 +182,7 @@ class TownArchivedFragment(Base):
     contributor_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     pre_reveal_text: Mapped[str] = mapped_column(Text)
     post_reveal_text: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class TownCard(Base):
@@ -167,5 +197,5 @@ class TownCard(Base):
     source_contribution_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     published_contributor_keys: Mapped[list[str]] = mapped_column(JSON, default=list)
     version: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)

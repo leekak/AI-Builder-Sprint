@@ -24,7 +24,9 @@ export function escapeHtml(value = '') {
 export function formatDate(value, withTime = false) {
   if (!value) return '';
   const date = new Date(value);
-  return new Intl.DateTimeFormat('ko-KR', withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'long' }).format(date);
+  const options = withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'long' };
+  options.timeZone = 'Asia/Seoul';
+  return new Intl.DateTimeFormat('ko-KR', options).format(date);
 }
 
 export function toast(message, tone = 'normal') {

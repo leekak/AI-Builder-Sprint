@@ -30,7 +30,6 @@ let latestStatuses = [];
 let districtBounds = null;
 const BUSAN_CENTER = [35.1796, 129.0756];
 const BUSAN_ZOOM = 11;
-const MEMORY_MAP_BOUNDS = L.latLngBounds([[34.97, 128.75], [35.40, 129.32]]);
 const DISTRICT_META = {
   '강서구': { color:'#d7b98d', places:['명지'] },
   '사하구': { color:'#d39a7c', places:['감천문화마을','괴정','다대포','신평','장림','하단'] },
@@ -149,7 +148,7 @@ async function renderDistricts() {
       );
       polygon.on('mouseover', () => polygon.setStyle({ fillOpacity: 0.94, weight: 3.6, color: '#fffdf8' }));
       polygon.on('mouseout', () => polygon.setStyle({ fillOpacity: memories ? 0.84 : 0.74, weight: 2.4, color: '#fff9ed' }));
-      polygon.on('click', () => townMap.flyToBounds(polygon.getBounds().pad(0.18), { duration: 0.65, maxZoom: 12 }));
+      polygon.on('click', () => townMap.flyToBounds(polygon.getBounds().pad(0.18), { duration: 0.65, maxZoom: 14 }));
     },
   }).addTo(districtLayer);
   districtBounds = geoLayer.getBounds();
@@ -190,8 +189,6 @@ export function initTownMap() {
     zoomControl: false,
     minZoom: 10,
     maxZoom: 14,
-    maxBounds: MEMORY_MAP_BOUNDS.pad(0.08),
-    maxBoundsViscosity: 0.82,
     attributionControl: false,
   }).setView(BUSAN_CENTER, BUSAN_ZOOM);
   L.control.zoom({ position: 'bottomright', zoomInTitle: '확대', zoomOutTitle: '축소' }).addTo(townMap);
