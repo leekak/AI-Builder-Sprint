@@ -5,6 +5,7 @@ import { initCards, loadCards } from './cards.js';
 import { initTown, loadTownCards, renderTownPlaces, updateTownStatus } from './town.js';
 import { loadTownMap } from './map.js';
 import { initAdmin } from './admin.js';
+import { initUserSession } from './userSession.js';
 import { $, $$, state, switchTab, toast } from './utils.js';
 
 async function loadPlaceTags() {
@@ -15,7 +16,7 @@ async function loadPlaceTags() {
 
 async function initialize() {
   $('#memoryForm').memory_date.value = new Date().toISOString().slice(0, 10);
-  initRegister(); initRecall(); initCards(); initTown(); initAdmin();
+  initRegister(); initRecall(); initCards(); initTown(); initAdmin(); initUserSession();
   $$('.tabs button').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.tab)));
   document.addEventListener('tabchange', (event) => {
     if (event.detail !== 'register') clearRegisterResult();
@@ -30,7 +31,9 @@ async function initialize() {
   document.addEventListener('cardcreated', () => Promise.all([loadCards(), loadDue()]));
   document.addEventListener('townchanged', () => Promise.all([updateTownStatus(), loadTownMap()]));
   document.addEventListener('adminchange', () => Promise.all([loadTownCards(), updateTownStatus()]));
-  $('#userId').addEventListener('change', () => Promise.all([loadMemoriesCount(), loadRecentMemories(), loadDue(), loadCards()]));
+  const reloadForUser = () => Promise.all([loadMemoriesCount(), loadRecentMemories(), loadDue(), loadCards()]);
+  $('#userId').addEventListener('change', reloadForUser);
+  document.addEventListener('userchange', reloadForUser);
   try {
     await loadPlaceTags();
     await Promise.all([loadMemoriesCount(), loadRecentMemories(), loadDue(), loadCards(), loadTownCards(), updateTownStatus()]);
