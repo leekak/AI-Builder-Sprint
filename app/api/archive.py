@@ -85,7 +85,7 @@ def _group_fragments_by_contributor(
 def _latest_place_card(db: Session, place_tag: str) -> TownCard | None:
     return db.scalar(
         select(TownCard)
-        .where(TownCard.place_tag == place_tag)
+        .where(TownCard.place_tag == place_tag, TownCard.deleted_at.is_(None))
         .order_by(TownCard.updated_at.desc(), TownCard.created_at.desc())
         .limit(1)
     )
@@ -149,7 +149,11 @@ def get_place_tags(settings: Settings = Depends(get_settings)):
 
 @router.get("/archive/places", response_model=list[TownCardResponse])
 def list_town_cards(db: Session = Depends(get_db)):
-    cards = db.scalars(select(TownCard).order_by(TownCard.updated_at.desc(), TownCard.created_at.desc())).all()
+    cards = db.scalars(
+        select(TownCard)
+        .where(TownCard.deleted_at.is_(None))
+        .order_by(TownCard.updated_at.desc(), TownCard.created_at.desc())
+    ).all()
     # 개인정보 보호 파이프라인 적용 이전의 레거시 카드는 공개 목록에서 즉시 숨긴다.
     safe_cards = []
     seen_places: set[str] = set()
@@ -198,21 +202,68 @@ def list_place_contributions(
 @router.delete("/archive/places/cards/{card_id}")
 def delete_town_card(
     card_id: str,
-    _: str = Depends(require_admin_account),
+    admin_username: str = Depends(require_admin_account),
     db: Session = Depends(get_db),
 ):
     card = db.get(TownCard, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="삭제할 동네 추억 카드를 찾을 수 없습니다.")
+    if card.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="이미 삭제된 동네 추억 카드입니다.")
     place_tag = card.place_tag
-    db.delete(card)
+    card.deleted_at = utcnow()
+    card.deleted_by = admin_username
     db.commit()
     return {
         "deleted": True,
         "card_id": card_id,
         "place_tag": place_tag,
-        "message": f"{place_tag} 동네 추억 카드를 삭제했습니다.",
+        "message": f"{place_tag} 동네 추억 카드를 삭제했습니다. 관리자 화면에서 복구할 수 있습니다.",
     }
+
+
+@router.get("/archive/places/cards/deleted", response_model=list[TownCardResponse])
+def list_deleted_town_cards(
+    _: str = Depends(require_admin_account),
+    db: Session = Depends(get_db),
+):
+    cards = db.scalars(
+        select(TownCard)
+        .where(TownCard.deleted_at.is_not(None))
+        .order_by(TownCard.deleted_at.desc(), TownCard.updated_at.desc())
+    ).all()
+    return [town_card_to_dict(card) for card in cards]
+
+
+@router.post("/archive/places/cards/{card_id}/restore", response_model=TownCardResponse)
+def restore_town_card(
+    card_id: str,
+    _: str = Depends(require_admin_account),
+    db: Session = Depends(get_db),
+):
+    card = db.get(TownCard, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="복구할 동네 추억 카드를 찾을 수 없습니다.")
+    if card.deleted_at is None:
+        raise HTTPException(status_code=409, detail="삭제되지 않은 동네 추억 카드입니다.")
+    active_card = db.scalar(
+        select(TownCard).where(
+            TownCard.place_tag == card.place_tag,
+            TownCard.deleted_at.is_(None),
+            TownCard.id != card.id,
+        )
+    )
+    if active_card:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{card.place_tag}에 이미 공개 중인 카드가 있어 복구할 수 없습니다. 현재 카드를 먼저 삭제해 주세요.",
+        )
+    card.deleted_at = None
+    card.deleted_by = None
+    card.updated_at = utcnow()
+    db.commit()
+    db.refresh(card)
+    return town_card_to_dict(card)
 
 
 @router.get("/archive/places/statuses", response_model=list[TownPlaceStatusResponse])
@@ -227,7 +278,11 @@ def list_place_statuses(
         contributions_by_place[item.place_tag].append(item)
     for item in db.scalars(select(TownArchivedFragment)).all():
         archived_by_place[item.place_tag].append(item)
-    cards = db.scalars(select(TownCard).order_by(TownCard.updated_at.desc(), TownCard.created_at.desc())).all()
+    cards = db.scalars(
+        select(TownCard)
+        .where(TownCard.deleted_at.is_(None))
+        .order_by(TownCard.updated_at.desc(), TownCard.created_at.desc())
+    ).all()
     for card in cards:
         latest_by_place.setdefault(card.place_tag, card)
     statuses = [
