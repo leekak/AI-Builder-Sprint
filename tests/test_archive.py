@@ -70,10 +70,14 @@ def test_town_share_preview_returns_the_sanitized_text_before_consent(client):
         json={"place_tag": "광안리"},
     )
     assert preview.status_code == 200, preview.text
-    public_text = f"{preview.json()['safe_pre_text']} {preview.json()['safe_post_text']}"
+    public_text = (
+        f"{preview.json()['safe_pre_text']} {preview.json()['safe_post_text']} "
+        f"{preview.json()['safe_summary_text']}"
+    )
     assert "진우" not in public_text
     assert "범죄도시" not in public_text
     assert "연어초밥" not in public_text
+    assert preview.json()["safe_summary_text"]
     assert client.get("/archive/places/광안리/status").json()["distinct_contributors"] == 0
     shared = client.post(
         f"/cards/{card['id']}/share-to-town",
@@ -229,6 +233,55 @@ def test_unsharing_does_not_remove_memory_place(client):
     memory = client.get(f"/memories/{card['memory_id']}", headers=headers).json()
     assert memory["place_tag"] == "광안리"
     assert memory["share_to_town"] is False
+
+
+def test_already_shared_card_cannot_move_to_a_different_place(client):
+    """이미 공유된 카드를 다른 동네로 바꾸면, 옛 동네에 익명 흔적이 남고 새 동네에도 등록돼
+    지도 전체 참여자 집계가 같은 사람을 두 번 세게 된다. 장소 이동 자체를 막아 이를 예방한다."""
+    user = "no-moving-user"
+    card = complete_one_recall(client, user=user)
+    headers = {"X-User-Id": user}
+    assert client.post(
+        f"/cards/{card['id']}/share-to-town",
+        headers=headers,
+        json={"consent": True, "place_tag": "광안리"},
+    ).status_code == 200
+
+    preview = client.post(
+        f"/cards/{card['id']}/share-preview",
+        headers=headers,
+        json={"place_tag": "해운대"},
+    )
+    assert preview.status_code == 400
+    assert preview.json()["detail"]["current_place_tag"] == "광안리"
+
+    move = client.post(
+        f"/cards/{card['id']}/share-to-town",
+        headers=headers,
+        json={"consent": True, "place_tag": "해운대"},
+    )
+    assert move.status_code == 400
+    assert move.json()["detail"]["current_place_tag"] == "광안리"
+
+    # 같은 장소로 다시 공유(내용 갱신)하는 것은 여전히 허용된다.
+    resubmit = client.post(
+        f"/cards/{card['id']}/share-to-town",
+        headers=headers,
+        json={"consent": True, "place_tag": "광안리"},
+    )
+    assert resubmit.status_code == 200, resubmit.text
+
+    # 공유를 취소한 뒤라면 다른 장소로 새로 공유할 수 있다.
+    assert client.post(
+        f"/cards/{card['id']}/share-to-town",
+        headers=headers,
+        json={"consent": False},
+    ).status_code == 200
+    assert client.post(
+        f"/cards/{card['id']}/share-to-town",
+        headers=headers,
+        json={"consent": True, "place_tag": "해운대"},
+    ).status_code == 200
 
 
 def test_town_card_removes_personal_names_groups_and_unique_events(client):

@@ -196,6 +196,7 @@ class TownSharePreviewResponse(BaseModel):
     place_tag: str
     safe_pre_text: str
     safe_post_text: str
+    safe_summary_text: str
     preview_token: str
     conflicting_card_id: str | None = None
     conflicting_card_title: str | None = None

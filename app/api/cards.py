@@ -27,6 +27,7 @@ from app.serializers import card_to_dict
 from app.api.archive import generate_town_card_if_ready
 from app.services.ai import AIService
 from app.services.card_image import CardImageService
+from app.services.content_safety import censor_profanity
 from app.services.storage import StorageBackend
 from app.services.community import (
     create_share_preview_token,
@@ -268,6 +269,15 @@ def share_card_to_town(
         raise HTTPException(status_code=400, detail="공유할 장소 태그를 선택해주세요.")
     if place_tag not in settings.place_tags:
         raise HTTPException(status_code=400, detail={"message": "허용되지 않은 장소 태그입니다.", "allowed": settings.place_tags})
+    if card.shared_to_town and card.place_tag and card.place_tag != place_tag:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "이미 다른 동네에 공유된 기억은 장소를 바로 옮길 수 없습니다.",
+                "action": "먼저 공유를 취소한 뒤 새 장소로 다시 공유해주세요.",
+                "current_place_tag": card.place_tag,
+            },
+        )
 
     pre_text, post_text = _share_text(card)
     if not pre_text and not post_text:
@@ -292,12 +302,8 @@ def share_card_to_town(
             post_text=post_text,
         )
 
+    # 위에서 이미 "장소 이동" 시도를 막았으므로, 여기 남아있는 기여가 있다면 같은 장소일 수밖에 없다.
     existing = db.scalar(select(TownContribution).where(TownContribution.card_id == card.id))
-    if existing and existing.place_tag != place_tag:
-        # 이미 발행된 옛 장소의 조각은 익명으로 보존하고, 새 장소에는 별도 기여로 등록한다.
-        detach_or_delete_contribution(db, existing, ai=ai, settings=settings)
-        db.flush()
-        existing = None
 
     # 같은 사용자가 다른 기억(카드)으로 이미 이 장소에 공유해 둔 경우, 명시적으로 교체 확인을 받는다.
     conflicting = db.scalar(
@@ -383,6 +389,15 @@ def preview_card_for_town(
     place_tag = payload.place_tag.strip()
     if place_tag not in settings.place_tags:
         raise HTTPException(status_code=400, detail={"message": "허용되지 않은 장소 태그입니다.", "allowed": settings.place_tags})
+    if card.shared_to_town and card.place_tag and card.place_tag != place_tag:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "이미 다른 동네에 공유된 기억은 장소를 바로 옮길 수 없습니다.",
+                "action": "먼저 공유를 취소한 뒤 새 장소로 다시 공유해주세요.",
+                "current_place_tag": card.place_tag,
+            },
+        )
     pre_text, post_text = _share_text(card)
     if not pre_text and not post_text:
         raise HTTPException(status_code=400, detail="공유할 회상 조각이 없습니다.")
@@ -392,6 +407,13 @@ def preview_card_for_town(
         place_tag=place_tag,
         pre_text=pre_text,
         post_text=post_text,
+    )
+    safe_summary_text = censor_profanity(
+        ai.summarize_share_preview(
+            place_tag=place_tag,
+            safe_pre_text=safe_pre_text,
+            safe_post_text=safe_post_text,
+        )
     )
     conflicting = db.scalar(
         select(TownContribution).where(
@@ -408,6 +430,7 @@ def preview_card_for_town(
         "place_tag": place_tag,
         "safe_pre_text": safe_pre_text,
         "safe_post_text": safe_post_text,
+        "safe_summary_text": safe_summary_text,
         "preview_token": create_share_preview_token(
             settings,
             card_id=card.id,
