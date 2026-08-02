@@ -76,6 +76,23 @@ def _town_share_status(db: Session, card: MemoryCard) -> str:
     return "pending"
 
 
+def _image_source_text(memory) -> str:
+    """AI 이미지 생성 프롬프트에 쓸 '사실 기반' 텍스트만 모은다.
+
+    원본 공개 전 답변(initial_answer)과 힌트 답변(hint_answers)은 사용자가 원본을
+    보기 전에 떠올린 추측이라 실제와 다를 수 있다. 잘못된 내용이 그대로 이미지로
+    그려지지 않도록, 이미지 생성에는 다음 세 가지만 사용한다: 기억 원본 코멘트,
+    1차 회상에서 원본을 본 뒤 추가한 내용, 2차 회상에서 원본을 본 뒤 추가한 내용.
+    card.story는 화면에 보여주는 회상 여정용 텍스트라 추측 내용이 섞여 있어
+    이미지 프롬프트에는 쓰지 않는다.
+    """
+    parts = [memory.comment.strip()]
+    for recall in sorted(memory.recalls, key=lambda item: item.stage):
+        if recall.newly_recalled_text and recall.newly_recalled_text.strip():
+            parts.append(recall.newly_recalled_text.strip())
+    return " ".join(parts)
+
+
 @router.get("", response_model=list[MemoryCardResponse])
 def list_cards(
     request: Request,
@@ -124,14 +141,15 @@ def generate_card_image(
     if memory.image_path:
         raise HTTPException(status_code=409, detail="원본 사진이 있는 카드는 원본 사진을 그대로 사용합니다.")
 
-    style = image_service.choose_style(card.story)
+    image_source_text = _image_source_text(memory)
+    style = image_service.choose_style(image_source_text)
 
     prompt = image_service.build_prompt(
         mode=payload.mode,
         style=style,
         memory_date=memory.memory_date.isoformat(),
         place=memory.place_label or memory.place_tag,
-        story=card.story,
+        story=image_source_text,
         details=card.newly_recalled_details or [],
     )
     card.image_generation_status = "pending"
