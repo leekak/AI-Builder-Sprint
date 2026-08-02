@@ -4,9 +4,7 @@ import { $, setLoading, toast } from './utils.js';
 function showPreview(preview) {
   const dialog = $('#privacyPreview');
   $('#previewPlace').textContent = `${preview.place_tag} 동네 아카이브`;
-  $('#previewPre').textContent = preview.safe_pre_text || '공유할 내용 없음';
-  $('#previewPost').textContent = preview.safe_post_text || '';
-  $('#previewPostWrap').classList.toggle('hidden', !preview.safe_post_text);
+  $('#previewSummary').textContent = preview.safe_summary_text || '공유할 내용 없음';
   const conflictBox = $('#previewConflict');
   if (preview.conflicting_card_id) {
     conflictBox.textContent = `이미 '${preview.conflicting_card_title || '다른 기억'}'(으)로 이 동네에 등록되어 있어요. 계속 진행하면 그 기억 대신 지금 이 기억으로 교체됩니다.`;

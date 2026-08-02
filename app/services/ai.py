@@ -289,6 +289,13 @@ class MockAI:
             "reflection": "개인의 세부 정보는 덜어내고, 여러 기억에 반복된 장소의 모습을 함께 남겼어요.",
         }
 
+    def summarize_share_preview(self, *, place_tag: str, safe_pre_text: str, safe_post_text: str) -> str:
+        """공유 확인 팝업에 보여줄, 비식별화된 두 조각을 하나로 합친 요약 문장."""
+        parts = [part for part in (safe_pre_text, safe_post_text) if part]
+        if not parts:
+            return f"{place_tag}에 관한 기억"
+        return " ".join(dict.fromkeys(parts))
+
 
 class UpstageAI:
     def __init__(self, settings: Settings):
@@ -642,6 +649,27 @@ blocked_terms의 표현은 어떤 형태로도 출력하지 마세요.
 """.strip()
         return self._solar_json(prompt)
 
+    def summarize_share_preview(self, *, place_tag: str, safe_pre_text: str, safe_post_text: str) -> str:
+        """공유 확인 팝업에 보여줄, 비식별화된 두 조각을 하나로 합친 요약 문장."""
+        if not safe_pre_text and not safe_post_text:
+            return f"{place_tag}에 관한 기억"
+        prompt = f"""
+다음은 이미 비식별화된 두 개의 회상 조각입니다. 새로운 사실을 추가하지 말고,
+두 조각을 자연스러운 한두 문장으로 합쳐 하나의 요약으로 만드세요.
+'원본 공개 전/후' 같은 구분 표현은 쓰지 말고, 하나로 이어진 기억처럼 서술하세요.
+반드시 JSON 객체만 반환하세요.
+
+장소: {place_tag}
+조각 1: {safe_pre_text}
+조각 2: {safe_post_text}
+
+출력:
+{{"safe_summary_text":"..."}}
+""".strip()
+        result = self._solar_json(prompt)
+        summary = str(result.get("safe_summary_text") or "").strip()
+        return summary or " ".join(part for part in (safe_pre_text, safe_post_text) if part)
+
     def _solar_json(self, prompt: str) -> dict[str, Any]:
         url = f"{self.settings.upstage_base_url.rstrip('/')}/chat/completions"
         body = {
@@ -776,4 +804,10 @@ class AIService:
         return self._execute(
             lambda: self.upstage.create_town_card(**kwargs),
             lambda: self.mock.create_town_card(**kwargs),
+        )
+
+    def summarize_share_preview(self, **kwargs) -> str:
+        return self._execute(
+            lambda: self.upstage.summarize_share_preview(**kwargs),
+            lambda: self.mock.summarize_share_preview(**kwargs),
         )
