@@ -211,14 +211,16 @@ class MockAI:
         hint_answers: list[dict[str, Any]],
         newly_recalled_text: str,
     ) -> dict[str, Any]:
+        # initial_answer/hint_answers는 원본 공개 전에 사용자가 떠올린 추측이라
+        # 실제와 다를 수 있다. 잘못된 내용이 카드 이야기에 섞이지 않도록 카드
+        # 요약에는 사용하지 않고, 원본 코멘트와 원본 공개 후 추가된 내용만 쓴다.
         title = analysis.get("title") or "다시 이어진 기억"
-        pre = initial_answer.strip() if initial_answer else "처음에는 선명한 장면을 떠올리기 어려웠다."
         post = newly_recalled_text.strip()
-        story = f"{original_comment.strip()} 원본을 보기 전에는 {pre}"
+        story = original_comment.strip()
         if post:
-            story += f" 사진을 확인한 뒤에는 {post}라는 장면이 새롭게 이어졌다."
+            story += f" 다시 떠올리며 새롭게 이어진 장면: {post}"
         else:
-            story += " 사진을 확인하며 그날의 장면을 다시 마주했다."
+            story += " 사진을 다시 마주하며 그날의 장면을 이어보았다."
         details = [piece.strip() for piece in re.split(r"[.!?\n]+", post) if piece.strip()][:5]
         return {
             "card_title": title,
@@ -531,18 +533,19 @@ level 1은 넓은 개방형 질문, level 2는 감각·분위기 중심의 약�
         hint_answers: list[dict[str, Any]],
         newly_recalled_text: str,
     ) -> dict[str, Any]:
+        # 원본 공개 전 답변(initial_answer)·힌트 답변(hint_answers)은 사용자가 원본을
+        # 보기 전에 떠올린 추측이라 실제와 다를 수 있다. 잘못된 내용이 카드 이야기나
+        # 이미지 생성에 섞여 들어가지 않도록, LLM에는 아예 원본 코멘트와 원본 공개 후
+        # 추가된 내용만 전달하고 회상 전 추측은 프롬프트에 포함하지 않는다.
         prompt = f"""
 다음 기록을 하나의 추억 카드로 자연스럽게 연결하세요.
 사용자의 회상 정확도를 평가하거나 정답률을 언급하지 마세요.
-원본과 사용자 답변에 없는 사건을 추가하지 마세요.
-회상 전 내용과 원본 공개 후 새롭게 떠오른 내용을 구분해 이야기 속에서 연결하세요.
+아래에 주어진 원본 코멘트와 원본 공개 후 새롭게 떠오른 내용에 없는 사건을 추가하지 마세요.
 반드시 JSON 객체만 반환하세요.
 
 기억 날짜: {memory_date}
 원본 코멘트: {original_comment}
 등록 당시 분석: {json.dumps(analysis, ensure_ascii=False)}
-원본 공개 전 답변: {initial_answer}
-힌트 이후 답변: {json.dumps(hint_answers, ensure_ascii=False)}
 원본 공개 후 새롭게 떠오른 내용: {newly_recalled_text}
 
 출력:
