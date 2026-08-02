@@ -122,11 +122,14 @@ create table if not exists public.town_cards (
   source_contribution_ids jsonb not null default '[]'::jsonb,
   published_contributor_keys jsonb not null default '[]'::jsonb,
   version integer not null default 1,
+  deleted_at timestamptz,
+  deleted_by varchar(100),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists ix_town_cards_place_tag on public.town_cards(place_tag);
+create index if not exists ix_town_cards_deleted_at on public.town_cards(deleted_at);
 
 -- Storage bucket: 원본 이미지는 public이 아닌 private bucket에 저장합니다.
 insert into storage.buckets (id, name, public)

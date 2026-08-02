@@ -217,6 +217,8 @@ class TownCardResponse(BaseModel):
     story: str
     reflection: str
     version: int
+    deleted_at: datetime | None = None
+    deleted_by: str | None = None
     created_at: datetime
     updated_at: datetime
 

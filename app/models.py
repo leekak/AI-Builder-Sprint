@@ -197,5 +197,7 @@ class TownCard(Base):
     source_contribution_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     published_contributor_keys: Mapped[list[str]] = mapped_column(JSON, default=list)
     version: Mapped[int] = mapped_column(Integer, default=1)
+    deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True, index=True)
+    deleted_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)

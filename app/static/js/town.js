@@ -54,10 +54,36 @@ export async function loadTownCards() {
   container.innerHTML = emptyState('⌂', '동네 카드를 불러오는 중이에요', '잠시만 기다려 주세요.');
   try {
     const cards = await get('/archive/places');
-    if (!cards.length) return container.innerHTML = emptyState('⌂', '아직 완성된 동네 카드가 없어요', '같은 장소를 기억하는 사람들이 모이면 공동체의 이야기가 시작됩니다.');
-    container.innerHTML = cards.map((card) => `<article class="town-card"><div class="meta">${escapeHtml(card.place)} · ${card.contributors}명의 기억 · v${card.version} · ${formatDate(card.updated_at)}</div><h3>${escapeHtml(card.card_title)}</h3><p>${escapeHtml(card.story)}</p><p><b>${escapeHtml(card.reflection)}</b></p>${isAdmin() ? `<div class="card-actions"><button type="button" class="danger-outline delete-town-card" data-card-id="${card.id}" data-place="${escapeHtml(card.place)}">동네 카드 삭제</button></div>` : ''}</article>`).join('');
-    container.querySelectorAll('.delete-town-card').forEach((button) => button.addEventListener('click', () => deleteTownCard(button.dataset.cardId, button.dataset.place)));
+    if (!cards.length) container.innerHTML = emptyState('⌂', '아직 완성된 동네 카드가 없어요', '같은 장소를 기억하는 사람들이 모이면 공동체의 이야기가 시작됩니다.');
+    else {
+      container.innerHTML = cards.map((card) => `<article class="town-card"><div class="meta">${escapeHtml(card.place)} · ${card.contributors}명의 기억 · v${card.version} · ${formatDate(card.updated_at)}</div><h3>${escapeHtml(card.card_title)}</h3><p>${escapeHtml(card.story)}</p><p><b>${escapeHtml(card.reflection)}</b></p>${isAdmin() ? `<div class="card-actions"><button type="button" class="danger-outline delete-town-card" data-card-id="${card.id}" data-place="${escapeHtml(card.place)}">동네 카드 삭제</button></div>` : ''}</article>`).join('');
+      container.querySelectorAll('.delete-town-card').forEach((button) => button.addEventListener('click', () => deleteTownCard(button.dataset.cardId, button.dataset.place)));
+    }
   } catch (error) { container.innerHTML = emptyState('!', '동네 카드를 불러오지 못했어요', error.message); }
+  await loadDeletedTownCards();
+}
+
+async function loadDeletedTownCards() {
+  const section = $('#deletedTownSection');
+  const container = $('#deletedTownCards');
+  if (!isAdmin()) {
+    section.classList.add('hidden');
+    container.innerHTML = '';
+    return;
+  }
+  section.classList.remove('hidden');
+  container.innerHTML = emptyState('↶', '삭제된 카드를 확인하는 중이에요', '잠시만 기다려 주세요.');
+  try {
+    const cards = await adminGet('/archive/places/cards/deleted');
+    if (!cards.length) {
+      container.innerHTML = emptyState('↶', '삭제된 동네 카드가 없어요', '관리자가 삭제한 카드는 이곳에서 복구할 수 있습니다.');
+      return;
+    }
+    container.innerHTML = cards.map((card) => `<article class="town-card deleted-town-card"><div class="meta">삭제 ${formatDate(card.deleted_at, true)} · ${escapeHtml(card.place)} · v${card.version}</div><h3>${escapeHtml(card.card_title)}</h3><p>${escapeHtml(card.story)}</p><p><b>${escapeHtml(card.reflection)}</b></p><div class="card-actions"><button type="button" class="restore-town-card" data-card-id="${card.id}" data-place="${escapeHtml(card.place)}">이 카드 복구</button></div></article>`).join('');
+    container.querySelectorAll('.restore-town-card').forEach((button) => button.addEventListener('click', () => restoreTownCard(button.dataset.cardId, button.dataset.place)));
+  } catch (error) {
+    container.innerHTML = emptyState('!', '삭제된 카드를 불러오지 못했어요', error.message);
+  }
 }
 
 async function generateTownCard() {
@@ -71,10 +97,23 @@ async function generateTownCard() {
 }
 
 async function deleteTownCard(cardId, place) {
-  if (!window.confirm(`‘${place}’ 동네 추억 카드를 삭제할까요?\n\n공유된 비식별 기억 조각은 유지되어 추후 관리자가 카드를 다시 만들 수 있습니다.`)) return;
+  if (!window.confirm(`‘${place}’ 동네 추억 카드를 삭제할까요?\n\n공개 목록에서는 숨겨지며 관리자 화면에서 다시 복구할 수 있습니다.`)) return;
   try {
     const result = await adminDelete(`/archive/places/cards/${encodeURIComponent(cardId)}`);
     toast(result.message);
+    await Promise.all([loadTownCards(), updateTownStatus(), loadTownMap()]);
+    document.dispatchEvent(new CustomEvent('townchanged'));
+  } catch (error) {
+    if (error.status === 401 || error.status === 403) document.dispatchEvent(new CustomEvent('adminchange'));
+    toast(error.message, 'error');
+  }
+}
+
+async function restoreTownCard(cardId, place) {
+  if (!window.confirm(`‘${place}’ 동네 추억 카드를 다시 공개할까요?\n\n삭제 전의 이야기와 버전이 그대로 복구됩니다.`)) return;
+  try {
+    const card = await adminPost(`/archive/places/cards/${encodeURIComponent(cardId)}/restore`);
+    toast(`‘${card.card_title}’ 동네 추억 카드를 복구했습니다.`);
     await Promise.all([loadTownCards(), updateTownStatus(), loadTownMap()]);
     document.dispatchEvent(new CustomEvent('townchanged'));
   } catch (error) {

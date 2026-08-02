@@ -121,6 +121,8 @@ def town_card_to_dict(card: TownCard) -> dict:
         "story": card.story,
         "reflection": card.reflection,
         "version": card.version,
+        "deleted_at": card.deleted_at,
+        "deleted_by": card.deleted_by,
         "created_at": card.created_at,
         "updated_at": card.updated_at,
     }
