@@ -527,7 +527,7 @@ python -m pytest
 2026년 8월 3일 최종 실행 결과:
 
 ```text
-47 passed, 1 warning
+48 passed, 1 warning
 ```
 
 경고 1건은 Starlette TestClient의 향후 httpx2 전환 안내이며 기능 실패가 아니다.
