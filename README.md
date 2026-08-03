@@ -2,7 +2,11 @@
 
 > 사진을 보기 전에 기억을 먼저 떠올리고, 원본을 확인한 뒤 새롭게 떠오른 내용을 더해 하나의 추억 카드로 완성하는 회상 다이어리 서비스입니다.
 
-<!-- 데모 스크린샷은 여기에 추가하기!" /> -->
+<img width="400" alt="image" src="https://github.com/user-attachments/assets/ad5a2d8d-1a06-4ba4-8104-de72cfc9cdc9" />
+<img width="400" alt="image" src="https://github.com/user-attachments/assets/f3d6d275-9b91-4880-94c8-a7e83068b819" />
+<img width="400" alt="image" src="https://github.com/user-attachments/assets/1823503a-6011-46bd-b945-3ac5845f20ef" />
+<img width="400" alt="image" src="https://github.com/user-attachments/assets/e5742d92-064c-4c9e-9df3-baeba86410ef" />
+
 
 # 1️⃣ 프로젝트 개요
 
@@ -87,87 +91,36 @@
 
 - **사용자**: 일반 사용자
 - **기능 설명**: 회상 시각이 지난 기억만 조회합니다. 원본 코멘트·이미지는 응답에 포함하지 않고, 같은 날짜에 여러 기억이 있으면 순서(`day_sequence`)와 범주형 단서로만 구분합니다.
-- **주요 SQL**:
 
-    ```sql
-    SELECT id, place_tag, current_recall_stage
-    FROM memories
-    WHERE owner_id = ?
-      AND recall_completed = false
-      AND (
-        (current_recall_stage = 1 AND first_recall_at <= now())
-        OR (current_recall_stage = 2 AND second_recall_at <= now())
-      );
-
-    INSERT INTO recall_sessions (id, memory_id, owner_id, stage, status)
-    VALUES (?, ?, ?, ?, 'created');
-    ```
 
 ### 3-1. 회상 질문과 단계별 힌트
 
 - **대상 사용자**: 회상을 시작한 사용자
 - **기능 설명**: 넓은 개방형 질문 하나만 먼저 보여주고, `조금 더 떠올려보기`를 선택하면 감각·분위기 → 활동·장소 순으로 점점 구체적인 힌트를 엽니다. `기억이 잘 나지 않아요`를 선택해도 실패로 기록하지 않습니다.
-- **주요 SQL**:
 
-    ```sql
-    UPDATE recall_sessions
-    SET initial_answer = ?, hint_answers = ?::jsonb, hint_level = ?, answered_at = now()
-    WHERE id = ? AND owner_id = ?;
-    ```
 
 ### 3-2. 원본 공개와 추가 회상
 
 - **대상 사용자**: 답변을 저장한 사용자
 - **기능 설명**: 답변 저장 전에는 원본 공개 버튼이 비활성화됩니다. 공개 후에는 원본 사진·코멘트·날짜를 보여주고, 새롭게 떠오른 장면·감정·대화를 추가로 작성할 수 있습니다.
-- **주요 SQL**:
 
-    ```sql
-    UPDATE recall_sessions
-    SET revealed_at = now()
-    WHERE id = ? AND owner_id = ?;
-
-    UPDATE recall_sessions
-    SET newly_recalled_text = ?, completed_at = now()
-    WHERE id = ? AND owner_id = ?;
-    ```
 
 ## 4. 추억 카드 완성
 
 - **사용자**: 일반 사용자
 - **기능 설명**: 원본 코멘트와 원본 공개 후 새롭게 떠오른 내용만 Solar가 하나의 이야기로 연결합니다. 원본 공개 전 답변(초기 답변·힌트 답변)은 사용자가 아직 원본을 보기 전에 떠올린 추측이라 실제와 다를 수 있어, 카드 이야기에는 포함하지 않습니다. `(memory_id, stage)`에 유니크 제약을 걸어 1차 회상은 카드를 새로 만들고, 2차 회상은 같은 기억의 카드를 갱신하도록 구분합니다.
-- **주요 SQL**:
-
-    ```sql
-    -- (memory_id, stage) UNIQUE 제약으로 재회상 시 카드 중복 생성을 방지
-    INSERT INTO memory_cards (id, memory_id, recall_id, owner_id, card_title, story, reflection, newly_recalled_details)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb);
-    ```
 
 ### 4-1. 추억 카드 보관함
 
 - **대상 사용자**: 카드 소유자
 - **기능 설명**: 완성한 카드를 최신순으로 조회하고, 상세 화면에서 원본 사진과 1·2차 회상 타임라인을 함께 확인합니다. 카드는 숨김 처리와 복구가 가능하며, 영구 삭제와는 구분됩니다.
-- **주요 SQL**:
 
-    ```sql
-    SELECT * FROM memory_cards
-    WHERE owner_id = ? AND archived = false
-    ORDER BY created_at DESC;
-
-    UPDATE memory_cards SET archived = true WHERE id = ? AND owner_id = ?;
-    ```
 
 ### 4-2. 사진 없는 카드의 AI 이미지 생성
 
 - **대상 사용자**: 원본 사진이 없는 카드의 소유자
 - **기능 설명**: 사진이 있는 카드는 원본을 그대로 쓰고 이미지 생성 버튼 자체를 숨깁니다. 사진이 없을 때만 원본 코멘트와 1·2차 회상에서 원본 공개 후 새롭게 떠오른 내용만으로 Gemini(Nano Banana)가 이미지를 생성합니다. 원본 공개 전 답변은 실제와 다른 추측일 수 있어 이미지 생성 입력에서 제외하며, 원본 사진은 절대 Google API로 전송되지 않습니다.
-- **주요 SQL**:
 
-    ```sql
-    UPDATE memory_cards
-    SET generated_image_path = ?, image_generation_status = 'completed', image_generated_at = now()
-    WHERE id = ? AND owner_id = ?;
-    ```
 
 ## 5. 동네 추억 카드
 
@@ -175,50 +128,23 @@
 
 - **대상 사용자**: 카드를 완성한 사용자 (opt-in)
 - **기능 설명**: 공유 버튼을 눌러도 바로 저장하지 않습니다. Solar가 이름·소속·경로 등을 제거한 뒤, 원본 공개 전/후 회상을 하나로 합친 요약 문장 한 개를 10분 유효한 서버 서명과 함께 보여주고, 사용자가 최종 확인해야 실제로 저장됩니다.
-- **주요 SQL**:
 
-    ```sql
-    INSERT INTO town_contributions (id, card_id, memory_id, recall_id, owner_id, contributor_key, place_tag, pre_reveal_text, post_reveal_text)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-    ```
 
 ### 5-2. 동네 카드 생성 (최소 3명, 자동)
 
 - **대상 사용자**: 시스템(카드를 동네에 공유하는 순간 자동 실행) + 관리자(수동 재시도)
 - **기능 설명**: 카드를 동네에 공유하는 순간 서버가 같은 장소 태그의 기여자 수를 바로 확인해, 서로 다른 사용자 3명이 모이면 관리자 개입 없이 카드를 자동으로 생성·갱신합니다(`generate_town_card_if_ready`). 이 자동 생성이 실패해도 공유 자체는 막지 않고 조용히 넘어가며, 필요하면 `POST /archive/places/{place_tag}/card`로 관리자가 수동 재시도할 수 있습니다. 기여자 수는 레코드 수가 아니라 서로 다른 사용자 수로 판정하며, 같은 사용자의 여러 조각은 하나로 묶어 한 명으로 집계합니다.
-- **주요 SQL**:
-
-    ```sql
-    SELECT COUNT(DISTINCT COALESCE(contributor_key, owner_id)) AS contributors
-    FROM town_contributions
-    WHERE place_tag = ?;
-
-    INSERT INTO town_cards (id, place_tag, contributors, card_title, story, reflection, source_contribution_ids, published_contributor_keys, version)
-    VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 1);
-    ```
 
 ### 5-3. 동네 기억 지도
 
 - **사용자**: 모든 사용자
 - **기능 설명**: Leaflet과 실제 부산 16개 구·군 경계 데이터를 이용해 장소별 기여 현황을 지도에서 확인할 수 있습니다.
-- **주요 SQL**:
 
-    ```sql
-    SELECT place_tag, COUNT(DISTINCT COALESCE(contributor_key, owner_id)) AS contributors
-    FROM town_contributions
-    GROUP BY place_tag;
-    ```
 
 ## 6. 관리자 인증과 동네 카드 삭제·복구
 
 - **사용자**: 관리자
 - **기능 설명**: 관리자 아이디/비밀번호로 로그인하면 JWT를 발급하고, 이 토큰이 있어야만 동네 카드를 삭제하거나 복구할 수 있습니다. 삭제는 영구 제거가 아니라 공개 목록과 지도에서 숨기는 소프트 삭제입니다. 같은 장소에 새 활성 카드가 생긴 경우 중복 공개를 막기 위해 기존 삭제 카드의 복구를 차단합니다.
-- **주요 SQL**:
-
-    ```sql
-    UPDATE town_cards SET deleted_at = now(), deleted_by = ? WHERE id = ?;
-    UPDATE town_cards SET deleted_at = NULL, deleted_by = NULL WHERE id = ?;
-    ```
 
 기존 Supabase 프로젝트에는 `sql/migrations/006_town_card_soft_delete.sql`을 SQL Editor에서 한 번 실행해야 합니다. 기능 적용 이전에 영구 삭제된 카드는 원본 행이 남아 있지 않아 복구할 수 없습니다.
 
@@ -226,16 +152,7 @@
 
 - **대상 사용자**: 기억 소유자
 - **기능 설명**: 원본 사진·코멘트·회상 세션·개인 카드는 완전히 삭제합니다. 다만 이미 발행된 동네 카드에 쓰인 조각은 카드를 깨뜨리지 않도록 익명 보존 테이블로 옮깁니다.
-- **주요 SQL**:
 
-    ```sql
-    -- 이미 발행된 동네 카드에 쓰인 조각은 사용자 연결을 제거하고 보존
-    INSERT INTO town_archived_fragments (id, place_tag, contributor_key, pre_reveal_text, post_reveal_text)
-    SELECT ?, place_tag, contributor_key, pre_reveal_text, post_reveal_text
-    FROM town_contributions WHERE memory_id = ?;
-
-    DELETE FROM memories WHERE id = ? AND owner_id = ?;  -- CASCADE로 회상 세션·개인 카드도 함께 삭제
-    ```
 
 ---
 
@@ -256,7 +173,7 @@
 
 ---
 
-# 5️⃣ 팀원의 역할 배분
+# 5️⃣ 팀원
 
 
 - 이학진(팀장)
