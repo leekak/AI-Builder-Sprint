@@ -164,7 +164,7 @@ class Settings(BaseSettings):
     second_recall_days: int = 30
     allow_early_recall: bool = False
 
-    auth_mode: Literal["demo", "header", "supabase"] = "demo"
+    auth_mode: Literal["demo", "header", "supabase"] = "header"
     demo_user_id: str = "demo-user"
     supabase_jwt_secret: str | None = None
     admin_key: str | None = None

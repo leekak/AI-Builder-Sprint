@@ -6,7 +6,32 @@ import { initTown, loadTownCards, renderTownPlaces, updateTownStatus } from './t
 import { loadTownMap } from './map.js';
 import { initAdmin } from './admin.js';
 import { initUserSession } from './userSession.js';
-import { $, $$, state, switchTab, toast } from './utils.js';
+import { $, $$, emptyState, hasUserSession, state, switchTab, toast } from './utils.js';
+
+function applyPrivateSessionState() {
+  const loggedIn = hasUserSession();
+  document.body.classList.toggle('user-logged-out', !loggedIn);
+  ['register', 'recall', 'cards'].forEach((id) => {
+    const panel = $(`#${id}`);
+    panel.classList.toggle('login-required', !loggedIn);
+    panel.setAttribute('aria-disabled', String(!loggedIn));
+  });
+  if (!loggedIn) {
+    $('#memoryCount').textContent = '—';
+    $('#cardCount').textContent = '—';
+    $('#dueBadge').classList.add('hidden');
+    $('#recentMemories').innerHTML = emptyState('⌁', '로그인 후 기억을 맡길 수 있어요', '상단에 사용자 아이디를 입력하고 로그인해 주세요.');
+    $('#dueList').innerHTML = emptyState('⌁', '로그인 후 회상을 시작할 수 있어요', '상단에 사용자 아이디를 입력하고 로그인해 주세요.');
+    $('#myCards').innerHTML = emptyState('⌁', '로그인 후 내 추억 카드를 볼 수 있어요', '상단에 사용자 아이디를 입력하고 로그인해 주세요.');
+    closeRecallWorkspace();
+  }
+}
+
+async function reloadPrivateData() {
+  applyPrivateSessionState();
+  if (!hasUserSession()) return;
+  await Promise.all([loadMemoriesCount(), loadRecentMemories(), loadDue(), loadCards()]);
+}
 
 async function loadPlaceTags() {
   const data = await get('/place-tags');
@@ -31,12 +56,12 @@ async function initialize() {
   document.addEventListener('cardcreated', () => Promise.all([loadCards(), loadDue()]));
   document.addEventListener('townchanged', () => Promise.all([updateTownStatus(), loadTownMap()]));
   document.addEventListener('adminchange', () => Promise.all([loadTownCards(), updateTownStatus()]));
-  const reloadForUser = () => Promise.all([loadMemoriesCount(), loadRecentMemories(), loadDue(), loadCards()]);
-  $('#userId').addEventListener('change', reloadForUser);
-  document.addEventListener('userchange', reloadForUser);
+  document.addEventListener('userchange', reloadPrivateData);
+  applyPrivateSessionState();
   try {
     await loadPlaceTags();
-    await Promise.all([loadMemoriesCount(), loadRecentMemories(), loadDue(), loadCards(), loadTownCards(), updateTownStatus()]);
+    await Promise.all([loadTownCards(), updateTownStatus()]);
+    await reloadPrivateData();
   } catch (error) { toast(`초기 정보를 불러오지 못했습니다. ${error.message}`, 'error'); }
   const initial = location.hash.slice(1);
   if (['register', 'recall', 'cards', 'town'].includes(initial)) switchTab(initial);

@@ -16,7 +16,9 @@ export function isAdmin() {
 }
 
 function requestHeaders(json = false) {
-  const result = { 'X-User-Id': getUserId() };
+  const result = {};
+  const userId = getUserId();
+  if (userId) result['X-User-Id'] = userId;
   if (json) result['Content-Type'] = 'application/json';
   return result;
 }
