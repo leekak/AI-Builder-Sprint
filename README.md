@@ -49,43 +49,19 @@
 
 - **사용자**: 일반 사용자
 - **기능**: 사진 0~1장, 코멘트, 기억 날짜, 자유 입력 장소(`place_label`)를 `multipart/form-data`로 등록합니다. 등록과 동시에 1차(7일 뒤)·2차(30일 뒤) 회상 시각을 계산해 저장합니다.
-- **주요 SQL**:
 
-    ```sql
-    INSERT INTO memories (
-      id, owner_id, comment, memory_date, place_label,
-      image_path, image_filename, image_content_type, use_ocr,
-      first_recall_at, second_recall_at, current_recall_stage, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'registered');
-    ```
 
 ### 1-1. 사진 속 텍스트 인식 (조건부 OCR)
 
 - **대상 사용자**: 일반 사용자
 - **기능 설명**: 영화표·영수증처럼 사진 속에 텍스트가 있을 때만 사용자가 직접 `use_ocr`을 선택합니다. 이미지가 없는데 OCR을 요청하면 400 오류로 차단합니다. Document Parse 결과는 이후 Information Extract·Solar 분석에 함께 사용됩니다.
-- **주요 SQL**:
 
-    ```sql
-    UPDATE memories
-    SET ocr_status = 'completed', ocr_text = ?
-    WHERE id = ? AND owner_id = ?;
-    ```
 
 ## 2. 기억 맥락 분석
 
 - **사용자**: 일반 사용자 (등록 직후 자동 실행)
 - **기능 설명**: Information Extract가 코멘트(+OCR 결과)에서 사람·장소·활동·분위기를 사실 기반으로 구조화하고, Solar가 그 결과를 바탕으로 제목·요약·회상 단서(`recall_cues`)를 생성합니다. 원문에 없는 사건·감정은 만들어내지 않습니다.
-- **주요 SQL**:
 
-    ```sql
-    UPDATE memories
-    SET extraction_status = 'completed', extracted_context = ?::jsonb
-    WHERE id = ?;
-
-    UPDATE memories
-    SET analysis_status = 'completed', analysis = ?::jsonb
-    WHERE id = ?;
-    ```
 
 ## 3. 오늘의 회상
 
