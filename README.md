@@ -603,45 +603,22 @@ tests/test_archive.py
 
 ---
 
-## 7. 심사용 배포 서비스 확인 절차
+## 7. 배포 환경에서 AI 활용 확인하기
 
-심사위원은 별도의 API 키나 로컬 환경 설정 없이 Railway 평가용 웹사이트에서 핵심 흐름을 확인할 수 있다.
+심사위원은 별도의 API 키나 로컬 환경 설정 없이 Railway 배포 서비스에서 Upstage API의 실제 활용 결과를 확인할 수 있다.
 
-1. [평가용 서비스](https://ai-builder-sprint-production-edfe.up.railway.app/demo/)에 접속한다.
-2. 상단 `사용자 로그인`에 다른 사람과 겹치지 않는 임의의 ID(예: `judge-01`)를 입력한다. 실제 인증 계정이 아니므로 개인정보는 입력하지 않는다.
-3. 티켓·영수증처럼 글자가 있는 사진과 코멘트를 등록하고 `사진 속 글자도 기억에 활용하기`를 선택한다.
-4. 전체 흐름을 즉시 확인하려면 `회상 가능일 직접 설정`에서 1차·2차 회상을 각각 `0일`로 설정한 뒤 기억을 맡긴다.
-5. AI 맥락 정리가 끝나면 `오늘의 회상`에서 Solar가 생성한 개방형 질문과 단계별 힌트를 확인하고 답변을 저장한다.
-6. 그날의 원본을 확인하고 새롭게 떠오른 내용을 더해 개인 추억 카드를 완성한다. 두 번째 회상은 새 카드를 만들지 않고 기존 카드에 이어 붙는다.
-7. 개인 카드의 `동네에 익명 공유`에서 실제 저장 전에 이름·소속·구체적 경로 등이 일반화된 미리보기를 확인한다.
-8. `동네 추억 카드`에서 미리 구성된 공개 카드와 부산 기억 지도를 확인한다. 서로 다른 사용자 3명의 자동 생성 과정과 관리자 기능은 제출 데모 영상으로도 확인할 수 있다.
-9. [서버 상태](https://ai-builder-sprint-production-edfe.up.railway.app/health)에서 `environment: production`, `ai_mode: upstage`, `storage_backend: supabase`를 확인한다.
+1. [서버 상태](https://ai-builder-sprint-production-edfe.up.railway.app/health)에서 `environment: production`, `ai_mode: upstage`, `storage_backend: supabase`를 확인한다.
+2. [평가용 서비스](https://ai-builder-sprint-production-edfe.up.railway.app/demo/)에서 티켓·영수증처럼 글자가 있는 사진과 코멘트를 등록하고 OCR 활용을 선택한다.
+3. 등록 결과의 제목·요약·장소 추천을 통해 `Document Parse → Information Extract → Solar LLM` 처리 결과를 확인한다.
+4. `오늘의 회상`에서 Solar LLM이 기록 맥락에 맞게 생성한 개방형 질문과 단계별 힌트를 확인한다.
+5. 개인 추억 카드의 `동네에 익명 공유` 미리보기에서 Solar LLM이 이름·소속·구체적 경로 등을 일반화한 결과를 확인한다.
 
-관리자 삭제·복구 기능을 심사위원이 직접 시험해야 하는 경우 관리자 자격 증명은 공개 저장소가 아니라 제출 폼의 비공개 안내를 통해 제공한다.
-
----
-
-## 8. 개발자용 로컬·API 재현 절차
-
-1. `.env`에 실제 `UPSTAGE_API_KEY`를 입력한다.
-2. `AI_MODE=upstage`, `AI_FALLBACK_TO_MOCK=false`로 설정한다.
-3. 서버를 실행하고 `/health`에서 `ai_mode: upstage`를 확인한다.
-4. 글자가 있는 티켓 또는 영수증 사진과 코멘트를 등록한다.
-5. `POST /memories/{id}/process` 실행 후 DB에서 다음을 확인한다.
-   - `ocr_status=completed`
-   - `extraction_status=completed`
-   - `analysis_status=completed`
-   - `ocr_text`, `extracted_context`, `analysis` 값 존재
-6. 회상 시작 후 Solar가 만든 3단계 질문을 확인한다.
-7. 원본 공개와 추가 기억 입력 후 개인 추억 카드가 생성되는지 확인한다.
-8. 익명 공유 미리보기에서 개인 정보가 일반화됐는지 확인한다.
-9. 서로 다른 사용자 3명의 조각을 모아 동네 추억 카드를 생성한다.
-10. Upstage Console의 사용량 화면에서 호출 증가를 캡처한다.
+모델별 역할, API 호출 위치, 프롬프트 원칙과 출력 계약은 위 절과 [`AI_USAGE_EVIDENCE.md`](AI_USAGE_EVIDENCE.md)에, 자동·운영 검증 결과는 6절과 [`VALIDATION.md`](VALIDATION.md)에 정리했다.
 
 ---
 
 
-## 9. 보조 AI: 추억 카드 이미지 생성
+## 8. 보조 AI: 추억 카드 이미지 생성
 
 사진이 있는 카드는 원본 사진을 그대로 사용한다. 사진이 없는 카드만 Gemini Nano Banana를 통해 일러스트를 생성한다.
 
@@ -665,6 +642,6 @@ tests/test_card_images.py
 
 ---
 
-## 10. 한 문장 정리
+## 9. 한 문장 정리
 
 > Document Parse가 사진 속 기록을 읽고, Information Extract가 기억의 사실을 구조화하며, Solar LLM이 그 사실을 벗어나지 않는 질문과 이야기를 생성해 사용자가 스스로 기억을 되살리도록 돕는다.
