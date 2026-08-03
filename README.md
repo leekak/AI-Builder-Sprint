@@ -146,11 +146,11 @@
 
 # 5️⃣ 로컬 실행 가이드
 
-1. Python 3.11 이상 가상환경을 만들고 의존성을 설치합니다. (개발 환경은 Python 3.14 기준으로 검증했습니다.)
+1. Python 3.11 이상 가상환경을 만들고 의존성을 설치합니다. (현재 로컬·배포 환경은 Python 3.12로 검증했습니다.)
 
     ```bash
-    python -m venv venv
-    source venv/bin/activate      # Windows: venv\Scripts\activate
+    python3.12 -m venv .venv
+    source .venv/bin/activate      # Windows: .venv\Scripts\activate
     python -m pip install -r requirements.txt
     ```
 
@@ -194,23 +194,40 @@
 
 # 6️⃣ 실행 · 배포 환경 정보
 
-> 현재 이 프로젝트는 로컬 개발 환경(SQLite·로컬 Storage)으로만 실제 운영 중이며, 아직 어디에도 배포되어 있지 않습니다. 아래 "실 서비스 배포" 열은 배포할 때 어떻게 전환하면 되는지 안내하는 것이지, 지금 이미 그렇게 떠 있다는 뜻이 아닙니다.
+현재 `main` 브랜치를 Railway에 연결해 평가용 서비스를 실제 운영하고 있습니다. 2026년 8월 3일 기준으로 서버 상태, Upstage API, Supabase Database·Storage, 기억 등록부터 2차 회상과 카드 생성, 익명 공유, Gemini 이미지 생성, 관리자 인증까지 통합 검증했습니다.
 
-| 구분 | 로컬 개발(기본값) | 실 서비스 배포 |
+- **평가용 서비스:** [https://ai-builder-sprint-production-edfe.up.railway.app/demo/](https://ai-builder-sprint-production-edfe.up.railway.app/demo/)
+- **서버 상태 확인:** [https://ai-builder-sprint-production-edfe.up.railway.app/health](https://ai-builder-sprint-production-edfe.up.railway.app/health)
+- **API 문서:** [https://ai-builder-sprint-production-edfe.up.railway.app/docs](https://ai-builder-sprint-production-edfe.up.railway.app/docs)
+
+처음 접속하면 개인 데이터는 불러오지 않습니다. 상단에서 원하는 평가용 사용자 ID를 입력하고 `로그인`을 눌러야 기억 등록·회상·개인 카드 기능이 활성화됩니다. 이 방식은 평가용 사용자를 구분하기 위한 데모 세션이며 실제 신원 인증은 아닙니다. 동네 추억 카드와 부산 기억 지도는 로그인 없이 조회할 수 있습니다.
+
+| 구분 | 로컬 개발 | Railway 평가 배포 |
 | --- | --- | --- |
-| 실행 방식 | `python run.py` (uvicorn reload) | `Dockerfile` 기준 `uvicorn app.main:app --host 0.0.0.0 --port 8000` (reload 없이 실행) |
-| 데이터베이스 | SQLite (`sqlite:///./data/memory_recall.db`), 서버 시작 시 테이블 자동 생성 | Supabase PostgreSQL — `DATABASE_URL`을 Supabase Pooler 연결 문자열로 교체 (`sql/supabase_schema.sql`로 스키마 생성, `sql/migrations/`가 변경 이력) |
-| 파일 저장소 | `STORAGE_BACKEND=local`, `./data/uploads`에 저장 | `STORAGE_BACKEND=supabase` — `SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY` 필요 |
-| AI 처리 | `AI_MODE=mock` — 외부 API 호출 없이 고정된 결과 반환 | `AI_MODE=upstage`(또는 실패 시 mock으로 넘어가는 `auto`) — `UPSTAGE_API_KEY` 필요 |
-| 카드 이미지 생성 | `CARD_IMAGE_MODE=mock` | `CARD_IMAGE_MODE=gemini` — `GEMINI_API_KEY` 필요 |
-| 사용자 인증 | `AUTH_MODE=header` — 로그인 버튼을 누른 경우에만 브라우저 `localStorage`에 사용자 ID를 저장하고 `X-User-Id`로 전송합니다. 로그인 전에는 개인 기록 API를 호출하지 않습니다(실제 신원 확인 아님). | 평가용 배포도 `AUTH_MODE=header`를 사용합니다. 정식 서비스 전환 시에는 Supabase Auth JWT 검증과 프론트 로그인 연동이 필요합니다. |
-| 정적 파일 캐시 | `ENVIRONMENT=development`일 때 `/demo` 응답에 `no-cache` 헤더를 강제해 JS/CSS 수정이 새로고침에 바로 반영됨 (`app/main.py`) | `ENVIRONMENT=production`이면 이 미들웨어가 빠져 브라우저 캐시가 정상 동작 |
-| CORS | `CORS_ORIGINS=["*"]` (기본값) | 배포 도메인만 허용하도록 좁혀서 설정 |
-| Docker 배포 | — | `docker build -t memory-recall .` 후 `docker run -p 8000:8000 --env-file .env memory-recall` (이미지에 한글 렌더링용 `fonts-noto-cjk` 포함) |
+| 소스·배포 | 로컬 Git checkout | GitHub `main` 브랜치가 Railway 서비스에 연결되어 merge 후 자동 배포 |
+| 실행 방식 | `python run.py` (`uvicorn` reload) | `Dockerfile`의 `uvicorn app.main:app --host 0.0.0.0 --port 8000` (`PORT=8000`) |
+| 실행 환경 | `ENVIRONMENT=development`, Python 3.12 | `ENVIRONMENT=production`, Railway Docker 빌드, Python 3.12 |
+| 데이터베이스 | SQLite (`sqlite:///./data/memory_recall.db`), 필요 시 테이블 자동 생성 | Supabase PostgreSQL Transaction Pooler(`:6543`), `AUTO_CREATE_TABLES=false`, `sql/supabase_schema.sql` 및 `sql/migrations/`로 스키마 관리 |
+| 이미지 저장 | `STORAGE_BACKEND=local`, `./data/uploads` | `STORAGE_BACKEND=supabase`, 비공개 `memory-images` 버킷 |
+| AI 처리 | `AI_MODE=mock`, 외부 호출 없이 기능 흐름 검증 | `AI_MODE=upstage`, `AI_FALLBACK_TO_MOCK=false`; Solar·Document Parse·Information Extract 실제 호출 |
+| 카드 이미지 | `CARD_IMAGE_MODE=mock` | `CARD_IMAGE_MODE=gemini`; 사진이 없는 개인 카드에만 Gemini 기반 이미지 생성 |
+| 사용자 구분 | `AUTH_MODE=header`; 명시적 로그인 이후 `X-User-Id` 전송 | `AUTH_MODE=header`; 로그인 전 개인 API는 `401`, 공개 동네 아카이브는 로그인 없이 조회 가능 |
+| 관리자 | `.env`에 관리자 계정·JWT 서명값 설정 | Railway Variables의 관리자 계정·JWT 서명값으로 로그인하며 동네 카드 삭제·복구 권한 제공 |
+| 상태 점검 | `/health`, `/docs`, `python scripts/smoke_test.py` | Railway Healthcheck Path `/health`; 공개 도메인에서 HTTP 200 및 통합 흐름 확인 |
+
+### Railway 재배포 절차
+
+1. 변경 사항을 작업 브랜치에서 `main`으로 merge합니다.
+2. Railway 서비스의 Source branch가 `main`인지 확인합니다.
+3. Railway가 최신 commit으로 자동 배포하는지 `Deployments`에서 확인합니다. 자동 배포가 시작되지 않으면 `Deploy Latest Commit`을 실행합니다.
+4. 배포가 `Deployment successful`이 되면 `/health`에서 `environment=production`, `ai_mode=upstage`, `storage_backend=supabase`인지 확인합니다.
+5. 시크릿 창에서 `/demo/`를 열어 로그인 전 개인 데이터가 보이지 않는지 확인하고, 별도 평가용 사용자 ID로 전체 흐름을 테스트합니다.
+
+Railway에는 `.env` 파일을 업로드하지 않고 `Variables` 탭에 환경변수를 각각 등록합니다. API 키, Supabase service role key, DB 비밀번호, 관리자 비밀번호와 서명 비밀값은 저장소에 커밋하지 않습니다. 배포에 필요한 변수 이름과 의미는 아래 `환경변수 정보` 표와 `.env.example`에서 확인할 수 있습니다.
 
 관리자 계정, 회상 데모 압축 모드 등 시나리오별 실행 팁은 [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md)에, 자동/수동 검증 기록은 [`VALIDATION.md`](VALIDATION.md)에 자세히 정리되어 있습니다.
 
-여러 개발자가 동일한 Supabase 프로젝트에 접속할 때 Session Pooler(`:5432`)의 연결 한도를 소진하지 않도록, Pooler URL에서는 요청 종료 시 DB 연결을 즉시 반환합니다. 연결 한도 오류가 계속되면 실행 중인 팀원 서버를 모두 재시작하거나 Supabase의 Transaction Pooler(`:6543`) URL을 사용하세요. Transaction Pooler URL은 코드에서 psycopg prepared statement를 자동으로 비활성화합니다.
+여러 개발자가 동일한 Supabase 프로젝트에 접속할 때 Session Pooler(`:5432`)의 연결 한도를 소진하지 않도록, Pooler URL에서는 요청 종료 시 DB 연결을 즉시 반환합니다. Railway 배포에는 Transaction Pooler(`:6543`)를 사용하며, 코드는 해당 URL에서 psycopg prepared statement를 자동으로 비활성화합니다.
 
 ---
 
