@@ -1,6 +1,6 @@
-# 다시, 그날
+# 다시, 그날 📝
 
-> 사진을 보기 전에 기억을 먼저 떠올리고, 원본을 확인한 뒤 새롭게 떠오른 내용을 더해 하나의 추억 카드로 완성하는 회상 다이어리 서비스입니다.
+> 이전의 기록을 보기 전에 기억을 먼저 떠올리고, 원본을 확인한 뒤 새롭게 떠오른 내용을 더해 하나의 추억 카드로 완성하는 회상 다이어리 서비스입니다.
 
 <img width="400" alt="image" src="https://github.com/user-attachments/assets/ad5a2d8d-1a06-4ba4-8104-de72cfc9cdc9" />
 <img width="400" alt="image" src="https://github.com/user-attachments/assets/f3d6d275-9b91-4880-94c8-a7e83068b819" />
@@ -21,7 +21,7 @@
 **차별성 및 장점**
 
 1. **회상 우선 흐름:** 기존의 사진 다이어리와 달리, 원본을 즉시 보여주지 않고 **개방형 질문 → 자유 회상 → 원본 공개** 순서를 강제합니다. 정답을 맞히는 문제가 아니라 넓은 질문에서 시작해 단계적으로 구체적인 단서를 열람하는 방식으로, 사용자가 "틀렸다"는 느낌을 받지 않도록 설계했습니다.
-2. **1·2차 회상과 카드 누적:** 하나의 기억은 7일 뒤와 30일 뒤 두 번 회상되며, 두 번째 회상에서 새롭게 떠오른 내용은 새 카드가 아니라 **기존 카드에 이어 붙습니다.** 회상 횟수가 아니라 원본 기억을 기준으로 카드를 관리합니다.
+2. **1·2차 회상과 카드 누적:** 하나의 기억은 7일 뒤와 30일 뒤 두 번 회상되며, 두 번째 회상에서 새롭게 떠오른 내용은 새 카드가 아니라 **기존 카드에 이어 붙습니다.** 회상 횟수가 아니라 원본 기억을 기준으로 카드를 관리합니다.(이때 회상 시기는 변경이 가능합니다.)
 3. **동네 추억 카드:** 개인 회상 메커니즘(회상 → 원본 공개 → 새 기억 추가 → AI가 하나의 이야기로 연결)을 지역 단위로 그대로 확장했습니다. 같은 장소를 회상한 서로 다른 사용자 3명의 익명 조각이 모이면 공동체 추억 카드가 만들어져, 사라져가는 동네의 기억도 함께 보존합니다.
 4. **강력한 개인정보 보호 파이프라인:** 동네 공유 전 Solar가 이름·소속·경로 등을 비식별화하고, Information Extract로 민감 후보를 한 번 더 검출한 뒤, 백엔드가 최종 결과에 남은 차단 표현을 강제로 검사합니다. 사용자는 실제로 저장될 문장을 미리 확인하고 동의해야만 공유가 진행됩니다.
 
@@ -35,7 +35,7 @@
   - 사진(0~1장)과 코멘트로 기억을 등록하고, 회상 시점이 되면 질문에 답하며 회상합니다.
   - 원본 공개 후 새롭게 떠오른 기억을 추가해 추억 카드를 완성하고, 카드를 보관·숨김 처리할 수 있습니다.
   - opt-in으로 동의한 경우에만 비식별화된 회상 조각을 동네 추억 카드 재료로 공유합니다.
-  - 다른 사용자의 기억·카드에는 접근할 수 없습니다(`owner_id` 기준으로 완전히 격리).
+  - 다른 사용자의 기억·카드에는 접근할 수 없습니다.
 - **관리자 (Admin)**:
   - 별도 로그인(아이디/비밀번호 + JWT)을 통해서만 접근할 수 있습니다.
   - 일반 사용자는 볼 수 없는 **동네 추억 카드 삭제·복구** 권한을 가집니다.
@@ -48,49 +48,25 @@
 ## 1. 기억 등록
 
 - **사용자**: 일반 사용자
-- **기능**: 사진 0~1장, 코멘트, 기억 날짜, 자유 입력 장소(`place_label`)를 `multipart/form-data`로 등록합니다. 등록과 동시에 1차(7일 뒤)·2차(30일 뒤) 회상 시각을 계산해 저장합니다.
-- **주요 SQL**:
+- **기능**: 사진 0~1장, 코멘트, 기억 날짜, 자유 입력 장소를 `multipart/form-data`로 등록합니다. 등록과 동시에 1차(7일 뒤)·2차(30일 뒤) 회상 시기를 계산해 저장합니다.(이때 회상 시기는 변경이 가능합니다)
 
-    ```sql
-    INSERT INTO memories (
-      id, owner_id, comment, memory_date, place_label,
-      image_path, image_filename, image_content_type, use_ocr,
-      first_recall_at, second_recall_at, current_recall_stage, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'registered');
-    ```
 
 ### 1-1. 사진 속 텍스트 인식 (조건부 OCR)
 
 - **대상 사용자**: 일반 사용자
 - **기능 설명**: 영화표·영수증처럼 사진 속에 텍스트가 있을 때만 사용자가 직접 `use_ocr`을 선택합니다. 이미지가 없는데 OCR을 요청하면 400 오류로 차단합니다. Document Parse 결과는 이후 Information Extract·Solar 분석에 함께 사용됩니다.
-- **주요 SQL**:
 
-    ```sql
-    UPDATE memories
-    SET ocr_status = 'completed', ocr_text = ?
-    WHERE id = ? AND owner_id = ?;
-    ```
 
 ## 2. 기억 맥락 분석
 
 - **사용자**: 일반 사용자 (등록 직후 자동 실행)
-- **기능 설명**: Information Extract가 코멘트(+OCR 결과)에서 사람·장소·활동·분위기를 사실 기반으로 구조화하고, Solar가 그 결과를 바탕으로 제목·요약·회상 단서(`recall_cues`)를 생성합니다. 원문에 없는 사건·감정은 만들어내지 않습니다.
-- **주요 SQL**:
+- **기능 설명**: Information Extract가 코멘트(+OCR 결과)에서 사람·장소·활동·분위기를 사실 기반으로 구조화하고, Solar가 그 결과를 바탕으로 제목·요약·회상 단서를 생성합니다. 원문에 없는 사건·감정은 만들어내지 않습니다.
 
-    ```sql
-    UPDATE memories
-    SET extraction_status = 'completed', extracted_context = ?::jsonb
-    WHERE id = ?;
-
-    UPDATE memories
-    SET analysis_status = 'completed', analysis = ?::jsonb
-    WHERE id = ?;
-    ```
 
 ## 3. 오늘의 회상
 
 - **사용자**: 일반 사용자
-- **기능 설명**: 회상 시각이 지난 기억만 조회합니다. 원본 코멘트·이미지는 응답에 포함하지 않고, 같은 날짜에 여러 기억이 있으면 순서(`day_sequence`)와 범주형 단서로만 구분합니다.
+- **기능 설명**: 회상 시각이 지난 기억만 조회합니다. 원본 코멘트·이미지는 응답에 포함하지 않고, 같은 날짜에 여러 기억이 있으면 순서와 범주형 단서로만 구분합니다.
 
 
 ### 3-1. 회상 질문과 단계별 힌트
@@ -108,7 +84,7 @@
 ## 4. 추억 카드 완성
 
 - **사용자**: 일반 사용자
-- **기능 설명**: 회상 전 답변과 공개 후 추가 기억을 Solar가 하나의 이야기로 연결합니다. `(memory_id, stage)`에 유니크 제약을 걸어 1차 회상은 카드를 새로 만들고, 2차 회상은 같은 기억의 카드를 갱신하도록 구분합니다.
+- **기능 설명**: 원본 코멘트와 원본 공개 후 새롭게 떠오른 내용만 Solar가 하나의 이야기로 연결합니다. 원본 공개 전 답변(초기 답변·힌트 답변)은 사용자가 아직 원본을 보기 전에 떠올린 추측이라 실제와 다를 수 있어, 카드 이야기에는 포함하지 않습니다. 유니크 제약을 걸어 1차 회상은 카드를 새로 만들고, 2차 회상은 같은 기억의 카드를 갱신하도록 구분합니다.
 
 ### 4-1. 추억 카드 보관함
 
@@ -119,7 +95,7 @@
 ### 4-2. 사진 없는 카드의 AI 이미지 생성
 
 - **대상 사용자**: 원본 사진이 없는 카드의 소유자
-- **기능 설명**: 사진이 있는 카드는 원본을 그대로 쓰고 이미지 생성 버튼 자체를 숨깁니다. 사진이 없을 때만 카드 내용을 바탕으로 Gemini(Nano Banana)가 이미지를 생성하며, 원본 사진은 절대 Google API로 전송되지 않습니다.
+- **기능 설명**: 사진이 있는 카드는 원본을 그대로 쓰고 이미지 생성 버튼 자체를 숨깁니다. 사진이 없을 때만 원본 코멘트와 1·2차 회상에서 원본 공개 후 새롭게 떠오른 내용만으로 Gemini(Nano Banana)가 이미지를 생성합니다. 원본 공개 전 답변은 실제와 다른 추측일 수 있어 이미지 생성 입력에서 제외하며, 원본 사진은 절대 Google API로 전송되지 않습니다.
 
 
 ## 5. 동네 추억 카드
@@ -127,7 +103,7 @@
 ### 5-1. 공유 미리보기와 비식별화
 
 - **대상 사용자**: 카드를 완성한 사용자 (opt-in)
-- **기능 설명**: 공유 버튼을 눌러도 바로 저장하지 않습니다. Solar가 이름·소속·경로 등을 제거한 뒤, 원본 공개 전/후 회상을 하나로 합친 요약 문장 한 개를 10분 유효한 서버 서명과 함께 보여주고, 사용자가 최종 확인해야 실제로 저장됩니다.
+- **기능 설명**: 공유 버튼을 눌러도 바로 저장하지 않습니다. Solar가 이름·소속·경로 등을 제거한 뒤, 원본 공개 전/후 회상을 하나로 합친 요약 문장 한 개를 유효한 서버 서명과 함께 보여주고, 사용자가 최종 확인해야 실제로 저장됩니다.
 
 
 ### 5-2. 동네 카드 생성 (최소 3명, 자동)
@@ -158,33 +134,17 @@
 
 ---
 
-# 4️⃣ 데이터베이스 스키마
+# 4️⃣ 팀원 및 역할
 
-**PK : 진하게**, <u>FK : 밑줄</u>
-
-| 테이블명 | 컬럼명 |
+| 팀원 | 주요 역할 |
 | --- | --- |
-| memories | **id** varchar(36), owner_id varchar(128), comment text, memory_date date, place_label varchar(255), image_path/filename/content_type, use_ocr boolean, ocr_status/ocr_text/ocr_error, extraction_status/extracted_context(jsonb)/extraction_error, analysis_status/analysis(jsonb)/analysis_error, first_recall_at/second_recall_at timestamptz, current_recall_stage int, recall_completed boolean, place_tag, suggested_place_tag, share_to_town boolean, status, created_at/updated_at |
-| recall_sessions | **id** varchar(36), <u>memory_id</u> → memories, owner_id, stage int, status, questions(jsonb), initial_answer, hint_answers(jsonb), hint_level int, memory_not_recalled boolean, newly_recalled_text, started_at/answered_at/revealed_at/completed_at *(UNIQUE: memory_id+stage)* |
-| memory_cards | **id**, <u>memory_id</u> → memories, <u>recall_id</u> → recall_sessions(UNIQUE), owner_id, card_title, story, reflection, newly_recalled_details(jsonb), archived boolean, shared_to_town boolean, place_tag, generated_image_path/filename/content_type, image_generation_status/mode/style/prompt, image_generated_at, created_at/updated_at |
-| town_contributions | **id**, <u>card_id</u> → memory_cards(UNIQUE), <u>memory_id</u> → memories, <u>recall_id</u> → recall_sessions, owner_id, contributor_key, place_tag, pre_reveal_text, post_reveal_text, created_at |
-| town_archived_fragments | **id**, place_tag, contributor_key, pre_reveal_text, post_reveal_text, created_at *(owner_id/memory_id/card_id/recall_id 없음 — 작성자 재연결 불가)* |
-| town_cards | **id**, place_tag, contributors int, card_title, story, reflection, source_contribution_ids(jsonb), published_contributor_keys(jsonb), version int, created_at/updated_at |
-
-전체 DDL은 [`sql/supabase_schema.sql`](sql/supabase_schema.sql), 스키마 변경 이력은 [`sql/migrations/`](sql/migrations)에 있습니다.
+| 이학진 (팀장) | 백엔드·DB 골격 설계, 회상 다이어리·동네 지도 UI 구현, 동네 카드 삭제·복구 및 재생성 기능 및 각종 버그 수정|
+| 김동현 (팀원) | 타임존·지도 버벅임 버그 수정, 회상 전 추측 데이터가 카드에 섞이지 않도록 수정, 홈 화면 문구 정리 및 각종 버그 수정|
+| 김진우 (팀원) | 동네 카드 자동 생성·공유 충돌 처리, 관리자·일반사용자 로그인/로그아웃 UI, README 등 문서 정리 및 각종 버그 수정 |
 
 ---
 
-# 5️⃣ 팀원
-
-
-- 이학진(팀장)
-- 김동현
-- 김진우
-
----
-
-# 6️⃣ 로컬 실행 가이드
+# 5️⃣ 로컬 실행 가이드
 
 1. Python 3.11 이상 가상환경을 만들고 의존성을 설치합니다. (개발 환경은 Python 3.14 기준으로 검증했습니다.)
 
@@ -232,7 +192,9 @@
 
 ---
 
-# 7️⃣ 실행 · 배포 환경 정보
+# 6️⃣ 실행 · 배포 환경 정보
+
+> 현재 이 프로젝트는 로컬 개발 환경(SQLite·로컬 Storage)으로만 실제 운영 중이며, 아직 어디에도 배포되어 있지 않습니다. 아래 "실 서비스 배포" 열은 배포할 때 어떻게 전환하면 되는지 안내하는 것이지, 지금 이미 그렇게 떠 있다는 뜻이 아닙니다.
 
 | 구분 | 로컬 개발(기본값) | 실 서비스 배포 |
 | --- | --- | --- |
@@ -252,7 +214,7 @@
 
 ---
 
-# 8️⃣ 환경변수 정보
+# 7️⃣ 환경변수 정보
 
 `.env.example`을 복사해 값을 채웁니다. **`.env`는 `.gitignore`에 포함되어 있어 커밋되지 않습니다.**
 
@@ -261,7 +223,7 @@
 | 기본 실행 | `ENVIRONMENT` | `development` | `production`이 아니면 `/demo` 정적 파일에 no-cache 헤더를 강제합니다. |
 | | `DEBUG` | `false` | 디버그 로깅 여부. |
 | | `DATABASE_URL` | `sqlite:///./data/memory_recall.db` | SQLite 또는 Supabase Postgres 연결 문자열. |
-| | `AUTO_CREATE_TABLES` | `true` | 서버 시작 시 SQLAlchemy 테이블을 자동 생성할지 여부. |
+| | `AUTO_CREATE_TABLES` | `true` | 서버 시작 시 SQLAlchemy 테이블을 자동 생성할지 여부. **주의**: 없는 테이블만 새로 만들 뿐, 이미 있는 테이블에 컬럼을 추가하는 마이그레이션은 하지 않습니다. 팀원이 스키마를 바꾼 커밋을 받은 뒤에는 서버 재시작만으로 반영되지 않고, 로컬 SQLite 파일(`data/memory_recall.db`)을 지우고 다시 생성하거나 `sql/migrations/`의 해당 마이그레이션을 직접 적용해야 합니다. |
 | 인증 | `AUTH_MODE` | `header` | `demo` \| `header` \| `supabase`. `header`는 개인 요청에 `X-User-Id`가 필요하며, 빈 사용자가 `demo-user`로 자동 연결되는 문제를 방지합니다. |
 | | `DEMO_USER_ID` | `demo-user` | `AUTH_MODE=demo`를 명시적으로 선택했을 때만 사용하는 기본 아이디. 일반 실행과 평가용 배포에서는 사용하지 않습니다. |
 | | `SUPABASE_JWT_SECRET` | (없음) | `AUTH_MODE=supabase`일 때 **필수**. |
