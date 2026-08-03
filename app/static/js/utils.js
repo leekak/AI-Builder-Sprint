@@ -1,6 +1,8 @@
 export const $ = (selector, root = document) => root.querySelector(selector);
 export const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
+export const USER_ID_KEY = 'memory-recall-user-id';
+
 export const state = {
   recallId: null,
   recallStage: null,
@@ -14,7 +16,11 @@ export const state = {
 };
 
 export function getUserId() {
-  return $('#userId')?.value.trim() || 'demo-user';
+  return localStorage.getItem(USER_ID_KEY)?.trim() || '';
+}
+
+export function hasUserSession() {
+  return Boolean(getUserId());
 }
 
 export function escapeHtml(value = '') {

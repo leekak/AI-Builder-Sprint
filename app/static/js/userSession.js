@@ -1,10 +1,9 @@
-import { $, toast } from './utils.js';
-
-const USER_ID_KEY = 'memory-recall-user-id';
+import { $, USER_ID_KEY, toast } from './utils.js';
 
 function applyState(loggedIn) {
   $('#userId').readOnly = loggedIn;
   $('#userSessionButton').textContent = loggedIn ? '로그아웃' : '로그인';
+  $('#userSessionButton').classList.toggle('active-user', loggedIn);
 }
 
 function login() {
@@ -27,7 +26,7 @@ function logout() {
 
 export function initUserSession() {
   const saved = localStorage.getItem(USER_ID_KEY);
-  if (saved) $('#userId').value = saved;
+  $('#userId').value = saved || '';
   applyState(Boolean(saved));
   $('#userSessionButton').addEventListener('click', () => {
     if ($('#userId').readOnly) logout();

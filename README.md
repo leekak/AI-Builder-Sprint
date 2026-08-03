@@ -208,7 +208,7 @@
 
 4. 아래 주소로 접속합니다.
 
-    - 데모 UI: [http://127.0.0.1:8000/demo/](http://127.0.0.1:8000/demo/) — 상단 `사용자 로그인`에 `user1`처럼 원하는 아이디를 넣고 로그인하면 새로고침해도 그 사용자로 유지됩니다.
+    - 데모 UI: [http://127.0.0.1:8000/demo/](http://127.0.0.1:8000/demo/) — 처음에는 개인 데이터가 로드되지 않습니다. 상단 `사용자 로그인`에 `user1`처럼 원하는 아이디를 넣고 로그인하면 해당 사용자의 기록만 불러오며, 새로고침해도 로그인 상태가 유지됩니다. 실제 신원을 검증하는 계정 기능은 아닙니다.
     - Swagger: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
     - 상태 확인: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) — 현재 `ai_mode`·`storage_backend`·`demo_mode` 등 실행 설정을 그대로 보여줍니다.
     - 관리자 로그인: `.env`의 `ADMIN_USERNAME`/`ADMIN_PASSWORD`(기본값 `admin`/미설정 — 아래 환경변수 표 참고)로 로그인하면 동네 추억 카드 관리 화면으로 전환됩니다.
@@ -226,7 +226,7 @@
 6. (선택) 자동 테스트와 서버 스모크 테스트를 실행합니다.
 
     ```bash
-    python -m pytest         # 41개 테스트, mock AI·SQLite·로컬 Storage로 격리 실행
+    python -m pytest         # 48개 테스트, mock AI·SQLite·로컬 Storage로 격리 실행
     python scripts/smoke_test.py   # 서버가 실행 중이어야 합니다
     ```
 
@@ -241,7 +241,7 @@
 | 파일 저장소 | `STORAGE_BACKEND=local`, `./data/uploads`에 저장 | `STORAGE_BACKEND=supabase` — `SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY` 필요 |
 | AI 처리 | `AI_MODE=mock` — 외부 API 호출 없이 고정된 결과 반환 | `AI_MODE=upstage`(또는 실패 시 mock으로 넘어가는 `auto`) — `UPSTAGE_API_KEY` 필요 |
 | 카드 이미지 생성 | `CARD_IMAGE_MODE=mock` | `CARD_IMAGE_MODE=gemini` — `GEMINI_API_KEY` 필요 |
-| 사용자 인증 | `AUTH_MODE=demo` — 프론트 상단 로그인 입력창의 아이디를 `X-User-Id`로 그대로 사용(브라우저 `localStorage`에 저장되어 새로고침에도 유지, 실제 신원 확인 아님) | `AUTH_MODE=supabase` — Supabase Auth가 발급한 JWT를 검증(`SUPABASE_JWT_SECRET` 필요), 프론트 로그인 연동은 아직 미구현 |
+| 사용자 인증 | `AUTH_MODE=header` — 로그인 버튼을 누른 경우에만 브라우저 `localStorage`에 사용자 ID를 저장하고 `X-User-Id`로 전송합니다. 로그인 전에는 개인 기록 API를 호출하지 않습니다(실제 신원 확인 아님). | 평가용 배포도 `AUTH_MODE=header`를 사용합니다. 정식 서비스 전환 시에는 Supabase Auth JWT 검증과 프론트 로그인 연동이 필요합니다. |
 | 정적 파일 캐시 | `ENVIRONMENT=development`일 때 `/demo` 응답에 `no-cache` 헤더를 강제해 JS/CSS 수정이 새로고침에 바로 반영됨 (`app/main.py`) | `ENVIRONMENT=production`이면 이 미들웨어가 빠져 브라우저 캐시가 정상 동작 |
 | CORS | `CORS_ORIGINS=["*"]` (기본값) | 배포 도메인만 허용하도록 좁혀서 설정 |
 | Docker 배포 | — | `docker build -t memory-recall .` 후 `docker run -p 8000:8000 --env-file .env memory-recall` (이미지에 한글 렌더링용 `fonts-noto-cjk` 포함) |
@@ -262,8 +262,8 @@
 | | `DEBUG` | `false` | 디버그 로깅 여부. |
 | | `DATABASE_URL` | `sqlite:///./data/memory_recall.db` | SQLite 또는 Supabase Postgres 연결 문자열. |
 | | `AUTO_CREATE_TABLES` | `true` | 서버 시작 시 SQLAlchemy 테이블을 자동 생성할지 여부. |
-| 인증 | `AUTH_MODE` | `demo` | `demo` \| `header` \| `supabase`. `header`는 모든 요청에 `X-User-Id`가 필요, `supabase`는 JWT 검증. |
-| | `DEMO_USER_ID` | `demo-user` | `AUTH_MODE=demo`에서 사용자 미지정 시 기본 아이디. |
+| 인증 | `AUTH_MODE` | `header` | `demo` \| `header` \| `supabase`. `header`는 개인 요청에 `X-User-Id`가 필요하며, 빈 사용자가 `demo-user`로 자동 연결되는 문제를 방지합니다. |
+| | `DEMO_USER_ID` | `demo-user` | `AUTH_MODE=demo`를 명시적으로 선택했을 때만 사용하는 기본 아이디. 일반 실행과 평가용 배포에서는 사용하지 않습니다. |
 | | `SUPABASE_JWT_SECRET` | (없음) | `AUTH_MODE=supabase`일 때 **필수**. |
 | 저장소 | `STORAGE_BACKEND` | `local` | `local` \| `supabase`. |
 | | `LOCAL_STORAGE_DIR` | `./data/uploads` | 로컬 저장 경로. |

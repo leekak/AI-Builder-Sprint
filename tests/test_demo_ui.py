@@ -53,3 +53,21 @@ def test_recall_ui_enforces_answer_before_reveal(client):
     assert "카드에 이번 회상을 반영했습니다" in script
     assert "recall-draft:" in script
     assert "localStorage.setItem" in script
+
+
+def test_private_data_waits_for_explicit_user_login():
+    with open("app/static/js/utils.js", encoding="utf-8") as source:
+        utils_js = source.read()
+    with open("app/static/js/main.js", encoding="utf-8") as source:
+        main_js = source.read()
+    with open("app/static/js/register.js", encoding="utf-8") as source:
+        register_js = source.read()
+    with open("app/static/js/userSession.js", encoding="utf-8") as source:
+        session_js = source.read()
+
+    assert "localStorage.getItem(USER_ID_KEY)?.trim() || ''" in utils_js
+    assert "|| 'demo-user'" not in utils_js
+    assert "|| 'demo-user'" not in register_js
+    assert "if (!hasUserSession()) return;" in main_js
+    assert "applyPrivateSessionState();" in main_js
+    assert "localStorage.setItem(USER_ID_KEY, id);" in session_js

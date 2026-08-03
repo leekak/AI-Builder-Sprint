@@ -1,5 +1,5 @@
 import { del, get, post, protectedImage } from './api.js';
-import { $, emptyState, escapeHtml, formatDate, setLoading, state, toast } from './utils.js';
+import { $, emptyState, escapeHtml, formatDate, getUserId, setLoading, state, toast } from './utils.js';
 import { deleteMemory } from './register.js';
 import { previewAndShare } from './privacy.js';
 
@@ -23,6 +23,12 @@ function imageTools(card) {
 
 export async function loadCards() {
   const container = $('#myCards');
+  if (!getUserId()) {
+    state.cards = [];
+    $('#cardCount').textContent = '—';
+    container.innerHTML = emptyState('⌁', '로그인 후 내 추억 카드를 볼 수 있어요', '상단에 사용자 아이디를 입력하고 로그인해 주세요.');
+    return;
+  }
   container.innerHTML = emptyState('◇', '추억 카드를 불러오는 중이에요', '잠시만 기다려 주세요.');
   try {
     const showingArchived = $('#cardView').value === 'archived';

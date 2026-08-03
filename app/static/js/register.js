@@ -3,6 +3,7 @@ import { $, emptyState, escapeHtml, formatDate, getUserId, setLoading, setLoadin
 
 export async function loadMemoriesCount() {
   const requestedUser = getUserId();
+  if (!requestedUser) { $('#memoryCount').textContent = '—'; return; }
   try {
     const items = await get('/memories');
     if (requestedUser !== getUserId()) return;
@@ -16,6 +17,10 @@ export async function loadRecentMemories() {
   const container = $('#recentMemories');
   if (!container) return;
   const requestedUser = getUserId();
+  if (!requestedUser) {
+    container.innerHTML = emptyState('⌁', '로그인 후 기억을 맡길 수 있어요', '상단에 사용자 아이디를 입력하고 로그인해 주세요.');
+    return;
+  }
   container.innerHTML = emptyState('◌', '기억을 불러오는 중이에요', '잠시만 기다려 주세요.');
   try {
     const items = await get('/memories');
@@ -88,7 +93,9 @@ async function processMemory(memoryId) {
   const result = $('#registerResult');
   const finishLoading = setLoadingSequence(['사진 속 글자를 확인하고 있어요', '기억의 장소와 인물을 정리하고 있어요', '회상에 필요한 질문 단서를 만들고 있어요']);
   try {
-    const processed = await api(`/memories/${memoryId}/process`, { method: 'POST', headers: { 'X-User-Id': $('#userId').value.trim() || 'demo-user' } });
+    const userId = getUserId();
+    if (!userId) throw new Error('먼저 사용자 로그인을 해주세요.');
+    const processed = await api(`/memories/${memoryId}/process`, { method: 'POST', headers: { 'X-User-Id': userId } });
     const item = processed.memory;
     const title = item.analysis?.title || '이름을 붙이지 않은 기억';
     result.className = 'status-box';
@@ -108,6 +115,7 @@ async function processMemory(memoryId) {
 
 async function submitMemory(event) {
   event.preventDefault();
+  if (!getUserId()) return toast('상단에서 사용자 아이디로 먼저 로그인해 주세요.', 'error');
   const form = event.currentTarget;
   const file = form.image.files?.[0];
   if (form.use_ocr.checked && !file) return toast('사진 속 글자를 활용하려면 사진을 먼저 선택해 주세요.', 'error');

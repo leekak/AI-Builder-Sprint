@@ -113,6 +113,12 @@ function setRecallStage(stage) {
 
 export async function loadDue() {
   const list = $('#dueList');
+  if (!getUserId()) {
+    $('#dueBadge').classList.add('hidden');
+    list.innerHTML = emptyState('⌁', '로그인 후 회상을 시작할 수 있어요', '상단에 사용자 아이디를 입력하고 로그인해 주세요.');
+    closeRecallWorkspace();
+    return;
+  }
   list.innerHTML = emptyState('◌', '기억을 불러오는 중이에요', '잠시만 기다려 주세요.');
   try {
     const items = await get('/recalls/due');
