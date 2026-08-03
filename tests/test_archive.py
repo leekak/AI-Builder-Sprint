@@ -126,6 +126,40 @@ def test_town_card_same_contributions_cannot_be_generated_twice(client):
     assert "새로운 기여자" in duplicate.json()["detail"]["message"]
 
 
+def test_admin_can_reprocess_existing_town_card_without_new_contributors(client):
+    details = [
+        "좁은 골목과 작은 가게가 떠올랐다",
+        "화분과 골목의 생활 소리가 기억났다",
+        "사라진 가게와 이어지는 주민의 일상을 생각했다",
+    ]
+    for index, detail in enumerate(details):
+        user = f"reprocess-user-{index}"
+        card = complete_one_recall(client, user=user, new_detail=detail)
+        response = client.post(
+            f"/cards/{card['id']}/share-to-town",
+            headers={"X-User-Id": user},
+            json={"consent": True, "place_tag": "감천문화마을"},
+        )
+        assert response.status_code == 200, response.text
+
+    before = next(
+        item for item in client.get("/archive/places").json()
+        if item["place"] == "감천문화마을"
+    )
+    assert before["version"] == 1
+
+    response = client.post("/archive/places/감천문화마을/card/reprocess")
+    assert response.status_code == 200, response.text
+    rebuilt = response.json()
+    assert rebuilt["id"] == before["id"]
+    assert rebuilt["version"] == 2
+    assert rebuilt["contributors"] == 3
+
+    status = client.get("/archive/places/감천문화마을/status").json()
+    assert status["new_contributors"] == 0
+    assert status["can_generate"] is False
+
+
 def test_town_card_is_updated_only_after_three_new_distinct_users(client):
     def contribute(user: str):
         card = complete_one_recall(client, user=user, new_detail=f"{user}의 바닷가 산책")

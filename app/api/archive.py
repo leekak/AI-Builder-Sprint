@@ -20,12 +20,17 @@ from app.schemas import (
 )
 from app.serializers import town_card_to_dict
 from app.services.ai import AIService
-from app.services.community import contributor_key
+from app.services.community import contributor_key, sanitize_contribution
 from app.services.content_safety import censor_profanity, contains_profanity
 
 router = APIRouter(tags=["town archive"])
 PRIVACY_PIPELINE_MARKER = "privacy:v3"
-NON_PERSON_TERMS = {"분위기", "장소", "장면", "기억", "원본", "활동", "사람"}
+NON_PERSON_TERMS = {
+    "분위기", "장소", "장면", "기억", "원본", "활동", "사람", "사람들",
+    "주민", "주민들", "이웃", "이웃들", "방문객", "행인", "누군가",
+    "가게", "작은 가게", "문방구", "골목", "골목 이름", "가게명",
+    "정확한 위치 정보", "위치 정보", "해당 없음", "없음",
+}
 
 
 def _card_contribution_ids(card: TownCard | None) -> set[str]:
@@ -80,6 +85,55 @@ def _group_fragments_by_contributor(
         }
         for values in grouped.values()
     ]
+
+
+def _raw_recall_fragments(item: TownContribution) -> tuple[str, str]:
+    """공유자가 작성한 회상 답변만 다시 읽는다. 원본 사진·코멘트는 공개 재료로 쓰지 않는다."""
+    recall = item.card.recall
+    pre_parts: list[str] = []
+    if recall.initial_answer and recall.initial_answer.strip():
+        pre_parts.append(recall.initial_answer.strip())
+    for hint in recall.hint_answers or []:
+        answer = str(hint.get("answer") or "").strip()
+        if answer:
+            pre_parts.append(answer)
+    return "\n".join(pre_parts), (recall.newly_recalled_text or "").strip()
+
+
+def _reprocess_place_contributions(
+    contributions: list[TownContribution],
+    settings: Settings,
+    ai: AIService,
+) -> int:
+    """현재 개인 카드와 연결된 조각을 개선된 개인정보 보호 규칙으로 다시 만든다."""
+    updated = 0
+    for item in contributions:
+        pre_text, post_text = _raw_recall_fragments(item)
+        if not pre_text and not post_text:
+            continue
+        safe_pre, safe_post = sanitize_contribution(
+            ai,
+            settings,
+            place_tag=item.place_tag,
+            pre_text=pre_text,
+            post_text=post_text,
+        )
+        combined = f"{safe_pre} {safe_post}"
+        generic_markers = ("사진 촬영을 떠올린 기억", "장소의 분위기와 함께한", "함께한 장면을 더 떠올린")
+        if any(marker in combined for marker in generic_markers):
+            retry_pre, retry_post = sanitize_contribution(
+                ai,
+                settings,
+                place_tag=item.place_tag,
+                pre_text=pre_text,
+                post_text=post_text,
+            )
+            if len(f"{retry_pre} {retry_post}".strip()) > len(combined.strip()):
+                safe_pre, safe_post = retry_pre, retry_post
+        item.pre_reveal_text = safe_pre
+        item.post_reveal_text = safe_post
+        updated += 1
+    return updated
 
 
 def _latest_place_card(db: Session, place_tag: str) -> TownCard | None:
@@ -320,6 +374,8 @@ def generate_town_card_if_ready(
     settings: Settings,
     ai: AIService,
     place_tag: str,
+    *,
+    force: bool = False,
 ) -> tuple[TownCard | None, dict]:
     """기여자 수가 충족되면 동네 카드를 자동으로 생성/갱신한다.
 
@@ -339,7 +395,9 @@ def generate_town_card_if_ready(
     current_keys = _current_contributor_keys(contributions, archived_fragments, settings)
     latest = _latest_place_card(db, place_tag)
     status = _place_status_dict(place_tag, contributions, archived_fragments, latest, settings)
-    if not status["can_generate"]:
+    if not force and not status["can_generate"]:
+        return None, status
+    if force and (latest is None or len(current_keys) < settings.town_min_contributors):
         return None, status
 
     # 같은 사용자의 여러 카드는 하나의 익명 조각으로 합쳐 모든 참여자의 가중치를 동일하게 한다.
@@ -431,6 +489,41 @@ def generate_town_card_if_ready(
     db.commit()
     db.refresh(card)
     return card, status
+
+
+@router.post(
+    "/archive/places/{place_tag}/card/reprocess",
+    response_model=TownCardResponse,
+)
+def reprocess_town_card(
+    place_tag: str,
+    _: None = Depends(require_admin),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    ai: AIService = Depends(get_ai),
+):
+    """원본 회상 답변을 다시 비식별화하고 기존 동네 카드를 새 버전으로 만든다."""
+    if place_tag not in settings.place_tags:
+        raise HTTPException(status_code=404, detail="등록되지 않은 장소 태그입니다.")
+    contributions = list(
+        db.scalars(
+            select(TownContribution)
+            .where(TownContribution.place_tag == place_tag)
+            .order_by(TownContribution.created_at.asc())
+        ).all()
+    )
+    distinct_count = len({_active_contributor_key(item, settings) for item in contributions})
+    if distinct_count < settings.town_min_contributors:
+        raise HTTPException(status_code=409, detail="재처리하려면 서로 다른 사용자 3명의 공유 조각이 필요합니다.")
+    if _latest_place_card(db, place_tag) is None:
+        raise HTTPException(status_code=404, detail="다시 만들 기존 동네 추억 카드가 없습니다.")
+    if not _reprocess_place_contributions(contributions, settings, ai):
+        raise HTTPException(status_code=409, detail="다시 비식별화할 회상 답변이 없습니다.")
+    db.flush()
+    card, _ = generate_town_card_if_ready(db, settings, ai, place_tag, force=True)
+    if card is None:
+        raise HTTPException(status_code=409, detail="동네 추억 카드를 다시 만들지 못했습니다.")
+    return town_card_to_dict(card)
 
 
 @router.post("/archive/places/{place_tag}/card", response_model=TownCardResponse, status_code=201)
