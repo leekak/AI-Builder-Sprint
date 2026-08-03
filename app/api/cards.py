@@ -426,13 +426,20 @@ def preview_card_for_town(
         pre_text=pre_text,
         post_text=post_text,
     )
-    safe_summary_text = censor_profanity(
-        ai.summarize_share_preview(
-            place_tag=place_tag,
-            safe_pre_text=safe_pre_text,
-            safe_post_text=safe_post_text,
+    try:
+        safe_summary_text = censor_profanity(
+            ai.summarize_share_preview(
+                place_tag=place_tag,
+                safe_pre_text=safe_pre_text,
+                safe_post_text=safe_post_text,
+            )
         )
-    )
+    except ServiceError:
+        # 비식별화가 끝난 문장만 사용하므로 Upstage 요약이 일시 실패해도
+        # 개인정보를 다시 노출하지 않고 미리보기를 제공할 수 있다.
+        safe_summary_text = " ".join(
+            dict.fromkeys(part for part in (safe_pre_text, safe_post_text) if part)
+        )
     conflicting = db.scalar(
         select(TownContribution).where(
             TownContribution.owner_id == owner_id,

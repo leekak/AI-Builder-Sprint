@@ -148,6 +148,8 @@
 
 기존 Supabase 프로젝트에는 `sql/migrations/006_town_card_soft_delete.sql`을 SQL Editor에서 한 번 실행해야 합니다. 기능 적용 이전에 영구 삭제된 카드는 원본 행이 남아 있지 않아 복구할 수 없습니다.
 
+관리자는 장소를 선택한 뒤 **지역 카드 내용 다시 만들기**를 눌러 기존 공유 조각을 최신 개인정보 보호 규칙으로 다시 비식별화하고 지역 카드를 새 버전으로 재생성할 수 있습니다. 이 과정은 원본 사진·코멘트를 지역 카드 재료로 사용하지 않고 사용자가 작성한 회상 답변만 다시 처리합니다. 이름·소속·정확한 이동 경로는 제거하되, 골목·생활 소리·화분·작은 가게처럼 개인을 특정하지 않는 지역 생활 정보는 보존합니다.
+
 ## 7. 개인 기억 삭제 정책
 
 - **대상 사용자**: 기억 소유자
@@ -245,6 +247,8 @@
 | Docker 배포 | — | `docker build -t memory-recall .` 후 `docker run -p 8000:8000 --env-file .env memory-recall` (이미지에 한글 렌더링용 `fonts-noto-cjk` 포함) |
 
 관리자 계정, 회상 데모 압축 모드 등 시나리오별 실행 팁은 [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md)에, 자동/수동 검증 기록은 [`VALIDATION.md`](VALIDATION.md)에 자세히 정리되어 있습니다.
+
+여러 개발자가 동일한 Supabase 프로젝트에 접속할 때 Session Pooler(`:5432`)의 연결 한도를 소진하지 않도록, Pooler URL에서는 요청 종료 시 DB 연결을 즉시 반환합니다. 연결 한도 오류가 계속되면 실행 중인 팀원 서버를 모두 재시작하거나 Supabase의 Transaction Pooler(`:6543`) URL을 사용하세요. Transaction Pooler URL은 코드에서 psycopg prepared statement를 자동으로 비활성화합니다.
 
 ---
 

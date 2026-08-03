@@ -102,3 +102,5 @@ blockquote{margin:14px 0 0;padding:12px 14px;border-left:3px solid var(--orange)
 .district-name-marker{display:grid;place-items:center;background:transparent;border:0;pointer-events:none}
 .district-name-marker span{padding:2px 5px;border-radius:6px;background:rgba(255,253,248,.72);color:#3e4d42;font-size:8px;font-weight:800;line-height:1;white-space:nowrap;text-shadow:0 1px 0 #fff;box-shadow:0 1px 5px rgba(45,55,47,.08)}
 @media(max-width:760px){.district-name-marker span{font-size:7px;padding:2px 3px}}
+.town-control-actions{display:grid;gap:7px;min-width:180px}.town-control-actions button{width:100%;justify-content:center}
+@media(max-width:760px){.town-control-actions{width:100%}}

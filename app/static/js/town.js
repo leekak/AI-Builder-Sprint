@@ -24,6 +24,7 @@ export async function updateTownStatus() {
   if (!place || !state.placeTags.includes(place)) {
     $('#townStatus').textContent = place ? '목록에서 표준 지역을 선택해 주세요.' : '살펴볼 지역을 검색해 주세요.';
     $('#generateTown').disabled = true;
+    $('#reprocessTown').classList.add('hidden');
     $('#townContributions').classList.add('hidden');
     return;
   }
@@ -45,6 +46,7 @@ export async function updateTownStatus() {
     box.innerHTML = `<b>${label} ${progress}/${status.minimum_required}명</b><span class="meter"><i style="width:${ratio}%"></i></span><span>${message}</span>`;
     $('#generateTown').textContent = status.privacy_review_required ? '개인정보 보호 재처리' : (status.latest_card_id ? '동네 카드 갱신하기' : '동네 카드 만들기');
     $('#generateTown').disabled = !status.can_generate;
+    $('#reprocessTown').classList.toggle('hidden', !(isAdmin() && status.latest_card_id));
   } catch (error) { box.textContent = error.message; $('#generateTown').disabled = true; }
   await loadPlaceContributions(place);
 }
@@ -96,6 +98,17 @@ async function generateTownCard() {
   } catch (error) { toast(error.message, 'error'); }
 }
 
+async function reprocessTownCard() {
+  const place = $('#townPlace').value;
+  if (!state.placeTags.includes(place)) return toast('목록에서 표준 지역을 선택해 주세요.', 'error');
+  if (!window.confirm(`‘${place}’의 익명 공유 조각을 다시 비식별화하고 지역 카드 내용을 새로 만들까요?`)) return;
+  try {
+    const card = await adminPost(`/archive/places/${encodeURIComponent(place)}/card/reprocess`);
+    toast(`‘${card.card_title}’ 지역 카드를 v${card.version}으로 다시 만들었습니다.`);
+    await Promise.all([loadTownCards(), updateTownStatus(), loadTownMap()]);
+  } catch (error) { toast(error.message, 'error'); }
+}
+
 async function deleteTownCard(cardId, place) {
   if (!window.confirm(`‘${place}’ 동네 추억 카드를 삭제할까요?\n\n공개 목록에서는 숨겨지며 관리자 화면에서 다시 복구할 수 있습니다.`)) return;
   try {
@@ -132,4 +145,5 @@ export function initTown() {
   $('#refreshTown').addEventListener('click', () => Promise.all([loadTownCards(), updateTownStatus(), loadTownMap()]));
   $('#townPlace').addEventListener('change', updateTownStatus);
   $('#generateTown').addEventListener('click', generateTownCard);
+  $('#reprocessTown').addEventListener('click', reprocessTownCard);
 }

@@ -92,7 +92,7 @@
         <div class="map-legend" aria-label="지도 범례"><span><i class="empty"></i>아직 기억 없음</span><span><i class="waiting"></i>기억이 모이는 중</span><span><i class="published"></i>동네 카드 발행</span></div>
         <p id="townMapFallback" class="map-fallback hidden">지도를 불러오지 못했어요. 아래 장소 검색과 카드 목록은 계속 사용할 수 있습니다.</p>
       </section>
-      <div class="town-controls"><label class="field"><span>살펴볼 장소</span><input id="townPlace" list="placeTagsList" value="" placeholder="장소를 검색하거나 지도에서 선택" autocomplete="off" /></label><div id="townStatus" class="contribution-status" aria-live="polite"></div><button id="generateTown" class="primary">동네 카드 만들기</button></div>
+      <div class="town-controls"><label class="field"><span>살펴볼 장소</span><input id="townPlace" list="placeTagsList" value="" placeholder="장소를 검색하거나 지도에서 선택" autocomplete="off" /></label><div id="townStatus" class="contribution-status" aria-live="polite"></div><div class="town-control-actions"><button id="generateTown" class="primary">동네 카드 만들기</button><button id="reprocessTown" class="ghost hidden">지역 카드 내용 다시 만들기</button></div></div>
       <div id="townContributions" class="hidden"></div>
       <div id="townCards" class="card-grid"><div class="empty-state"><span>⌂</span><h3>아직 완성된 동네 카드가 없어요</h3><p>같은 장소를 기억하는 사람들이 모이면 공동체의 이야기가 시작됩니다.</p></div></div>
       <section id="deletedTownSection" class="deleted-town-section hidden" aria-labelledby="deletedTownTitle">
