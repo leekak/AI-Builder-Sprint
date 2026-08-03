@@ -2,7 +2,8 @@
 
 > 사진을 보기 전에 기억을 먼저 떠올리고, 원본을 확인한 뒤 새롭게 떠오른 내용을 더해 하나의 추억 카드로 완성하는 회상 다이어리 서비스입니다.
 
-<!-- 데모 스크린샷은 여기에 추가하기!" /> -->
+<img width="400" alt="image" src="https://github.com/user-attachments/assets/ad5a2d8d-1a06-4ba4-8104-de72cfc9cdc9" />
+
 
 # 1️⃣ 프로젝트 개요
 
