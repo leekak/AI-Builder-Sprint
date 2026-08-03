@@ -16,7 +16,12 @@ from app.errors import ServiceError
 from app.services.ai import AIService
 from app.services.content_safety import censor_profanity
 
-NON_PERSON_TERMS = {"분위기", "장소", "장면", "기억", "원본", "활동", "사람"}
+NON_PERSON_TERMS = {
+    "분위기", "장소", "장면", "기억", "원본", "활동", "사람", "사람들",
+    "주민", "주민들", "이웃", "이웃들", "방문객", "행인", "누군가",
+    "가게", "작은 가게", "문방구", "골목", "골목 이름", "가게명",
+    "정확한 위치 정보", "위치 정보", "해당 없음", "없음",
+}
 
 SAFE_ACTIVITY_CATEGORIES = (
     (("바다", "해변", "파도"), "바다 풍경"),
@@ -113,19 +118,21 @@ def sanitize_contribution(
     post_text: str,
 ) -> tuple[str, str]:
     combined = "\n".join(part for part in (pre_text, post_text) if part)
-    extracted = ai.extract_context(text=combined)
-    result = ai.sanitize_town_contribution(
-        place_tag=place_tag,
-        pre_text=pre_text,
-        post_text=post_text,
-    )
+    # 이 시점의 입력은 이미 구조화가 끝난 회상 답변이다. 익명 공유 때마다
+    # Information Extract를 다시 호출하면 지연과 장애 지점만 늘어나므로,
+    # Solar 비식별화 결과가 알려주는 차단 표현을 기준으로 검증한다.
+    # Upstage가 일시적으로 응답하지 않더라도 원문을 공개하지 않고 아래의
+    # 제한된 범주형 문장으로 대체해 공유 흐름을 안전하게 이어간다.
+    try:
+        result = ai.sanitize_town_contribution(
+            place_tag=place_tag,
+            pre_text=pre_text,
+            post_text=post_text,
+        )
+    except ServiceError:
+        return _fallback_contribution(place_tag, combined, has_post=bool(post_text.strip()))
     blocked_terms = list(dict.fromkeys([
         *result.get("blocked_terms", []),
-        *[item for item in extracted.get("people", []) if item not in NON_PERSON_TERMS],
-        *[
-            place for place in extracted.get("places", [])
-            if place != place_tag and place in settings.place_tags
-        ],
     ]))
     blocked_terms = [term for term in blocked_terms if term not in NON_PERSON_TERMS]
     candidate = _validated_candidate(result, blocked_terms)
@@ -133,15 +140,19 @@ def sanitize_contribution(
         return candidate
 
     # 1차 결과를 다시 입력해 AI가 이미 일반화된 문장만 더 넓은 범주로 정리하도록 한다.
-    retry = ai.sanitize_town_contribution(
-        place_tag=place_tag,
-        pre_text=str(result.get("safe_pre_text") or ""),
-        post_text=str(result.get("safe_post_text") or ""),
-    )
+    try:
+        retry = ai.sanitize_town_contribution(
+            place_tag=place_tag,
+            pre_text=str(result.get("safe_pre_text") or ""),
+            post_text=str(result.get("safe_post_text") or ""),
+        )
+    except ServiceError:
+        return _fallback_contribution(place_tag, combined, has_post=bool(post_text.strip()))
     retry_blocked_terms = list(dict.fromkeys([
         *blocked_terms,
         *retry.get("blocked_terms", []),
     ]))
+    retry_blocked_terms = [term for term in retry_blocked_terms if term not in NON_PERSON_TERMS]
     candidate = _validated_candidate(retry, retry_blocked_terms)
     if candidate:
         return candidate
