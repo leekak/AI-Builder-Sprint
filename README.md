@@ -21,7 +21,7 @@
 **차별성 및 장점**
 
 1. **회상 우선 흐름:** 기존의 사진 다이어리와 달리, 원본을 즉시 보여주지 않고 **개방형 질문 → 자유 회상 → 원본 공개** 순서를 강제합니다. 정답을 맞히는 문제가 아니라 넓은 질문에서 시작해 단계적으로 구체적인 단서를 열람하는 방식으로, 사용자가 "틀렸다"는 느낌을 받지 않도록 설계했습니다.
-2. **1·2차 회상과 카드 누적:** 하나의 기억은 7일 뒤와 30일 뒤 두 번 회상되며, 두 번째 회상에서 새롭게 떠오른 내용은 새 카드가 아니라 **기존 카드에 이어 붙습니다.** 회상 횟수가 아니라 원본 기억을 기준으로 카드를 관리합니다.
+2. **1·2차 회상과 카드 누적:** 하나의 기억은 7일 뒤와 30일 뒤 두 번 회상되며, 두 번째 회상에서 새롭게 떠오른 내용은 새 카드가 아니라 **기존 카드에 이어 붙습니다.** 회상 횟수가 아니라 원본 기억을 기준으로 카드를 관리합니다.(이때 회상 시기는 변경이 가능합니다.)
 3. **동네 추억 카드:** 개인 회상 메커니즘(회상 → 원본 공개 → 새 기억 추가 → AI가 하나의 이야기로 연결)을 지역 단위로 그대로 확장했습니다. 같은 장소를 회상한 서로 다른 사용자 3명의 익명 조각이 모이면 공동체 추억 카드가 만들어져, 사라져가는 동네의 기억도 함께 보존합니다.
 4. **강력한 개인정보 보호 파이프라인:** 동네 공유 전 Solar가 이름·소속·경로 등을 비식별화하고, Information Extract로 민감 후보를 한 번 더 검출한 뒤, 백엔드가 최종 결과에 남은 차단 표현을 강제로 검사합니다. 사용자는 실제로 저장될 문장을 미리 확인하고 동의해야만 공유가 진행됩니다.
 
@@ -48,7 +48,7 @@
 ## 1. 기억 등록
 
 - **사용자**: 일반 사용자
-- **기능**: 사진 0~1장, 코멘트, 기억 날짜, 자유 입력 장소(`place_label`)를 `multipart/form-data`로 등록합니다. 등록과 동시에 1차(7일 뒤)·2차(30일 뒤) 회상 시각을 계산해 저장합니다.
+- **기능**: 사진 0~1장, 코멘트, 기억 날짜, 자유 입력 장소(`place_label`)를 `multipart/form-data`로 등록합니다. 등록과 동시에 1차(7일 뒤)·2차(30일 뒤) 회상 시기를 계산해 저장합니다.(이때 회상 시기는 변경이 가능합니다)
 
 
 ### 1-1. 사진 속 텍스트 인식 (조건부 OCR)
@@ -103,7 +103,7 @@
 ### 5-1. 공유 미리보기와 비식별화
 
 - **대상 사용자**: 카드를 완성한 사용자 (opt-in)
-- **기능 설명**: 공유 버튼을 눌러도 바로 저장하지 않습니다. Solar가 이름·소속·경로 등을 제거한 뒤, 원본 공개 전/후 회상을 하나로 합친 요약 문장 한 개를 10분 유효한 서버 서명과 함께 보여주고, 사용자가 최종 확인해야 실제로 저장됩니다.
+- **기능 설명**: 공유 버튼을 눌러도 바로 저장하지 않습니다. Solar가 이름·소속·경로 등을 제거한 뒤, 원본 공개 전/후 회상을 하나로 합친 요약 문장 한 개를 유효한 서버 서명과 함께 보여주고, 사용자가 최종 확인해야 실제로 저장됩니다.
 
 
 ### 5-2. 동네 카드 생성 (최소 3명, 자동)
@@ -134,33 +134,17 @@
 
 ---
 
-# 4️⃣ 데이터베이스 스키마
+# 4️⃣ 팀원 및 역할
 
-**PK : 진하게**, <u>FK : 밑줄</u>
-
-| 테이블명 | 컬럼명 |
+| 팀원 | 주요 역할 |
 | --- | --- |
-| memories | **id** varchar(36), owner_id varchar(128), comment text, memory_date date, place_label varchar(255), image_path/filename/content_type, use_ocr boolean, ocr_status/ocr_text/ocr_error, extraction_status/extracted_context(jsonb)/extraction_error, analysis_status/analysis(jsonb)/analysis_error, first_recall_at/second_recall_at timestamptz, current_recall_stage int, recall_completed boolean, place_tag, suggested_place_tag, share_to_town boolean, status, created_at/updated_at |
-| recall_sessions | **id** varchar(36), <u>memory_id</u> → memories, owner_id, stage int, status, questions(jsonb), initial_answer, hint_answers(jsonb), hint_level int, memory_not_recalled boolean, newly_recalled_text, started_at/answered_at/revealed_at/completed_at *(UNIQUE: memory_id+stage)* |
-| memory_cards | **id**, <u>memory_id</u> → memories, <u>recall_id</u> → recall_sessions(UNIQUE), owner_id, card_title, story, reflection, newly_recalled_details(jsonb), archived boolean, shared_to_town boolean, place_tag, generated_image_path/filename/content_type, image_generation_status/mode/style/prompt, image_generated_at, created_at/updated_at |
-| town_contributions | **id**, <u>card_id</u> → memory_cards(UNIQUE), <u>memory_id</u> → memories, <u>recall_id</u> → recall_sessions, owner_id, contributor_key, place_tag, pre_reveal_text, post_reveal_text, created_at |
-| town_archived_fragments | **id**, place_tag, contributor_key, pre_reveal_text, post_reveal_text, created_at *(owner_id/memory_id/card_id/recall_id 없음 — 작성자 재연결 불가)* |
-| town_cards | **id**, place_tag, contributors int, card_title, story, reflection, source_contribution_ids(jsonb), published_contributor_keys(jsonb), version int, created_at/updated_at |
-
-전체 DDL은 [`sql/supabase_schema.sql`](sql/supabase_schema.sql), 스키마 변경 이력은 [`sql/migrations/`](sql/migrations)에 있습니다.
+| 이학진 (팀장) | 백엔드·DB 골격 설계, 회상 다이어리·동네 지도 UI 구현, 동네 카드 삭제·복구 및 재생성 기능 |
+| 김동현 (팀원) | 타임존·지도 버벅임 버그 수정, 회상 전 추측 데이터가 카드에 섞이지 않도록 수정, 홈 화면 문구 정리 |
+| 김진우 (팀원) | 동네 카드 자동 생성·공유 충돌 처리, 관리자·일반사용자 로그인/로그아웃 UI, README 등 문서 정리 |
 
 ---
 
-# 5️⃣ 팀장 및 팀원
-
-
-- 이학진(팀장)
-- 김동현
-- 김진우
-
----
-
-# 6️⃣ 로컬 실행 가이드
+# 5️⃣ 로컬 실행 가이드
 
 1. Python 3.11 이상 가상환경을 만들고 의존성을 설치합니다. (개발 환경은 Python 3.14 기준으로 검증했습니다.)
 
@@ -208,7 +192,7 @@
 
 ---
 
-# 7️⃣ 실행 · 배포 환경 정보
+# 6️⃣ 실행 · 배포 환경 정보
 
 > 현재 이 프로젝트는 로컬 개발 환경(SQLite·로컬 Storage)으로만 실제 운영 중이며, 아직 어디에도 배포되어 있지 않습니다. 아래 "실 서비스 배포" 열은 배포할 때 어떻게 전환하면 되는지 안내하는 것이지, 지금 이미 그렇게 떠 있다는 뜻이 아닙니다.
 
@@ -230,7 +214,7 @@
 
 ---
 
-# 8️⃣ 환경변수 정보
+# 7️⃣ 환경변수 정보
 
 `.env.example`을 복사해 값을 채웁니다. **`.env`는 `.gitignore`에 포함되어 있어 커밋되지 않습니다.**
 
